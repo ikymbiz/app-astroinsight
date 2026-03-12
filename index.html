@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AstroInsight - AI占星術＆自己分析</title>
+    
+    <!-- 外部ライブラリ -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Tailwind カスタム設定 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        astro: {
+                            light: '#e0e7ff',
+                            DEFAULT: '#4f46e5',
+                            dark: '#312e81',
+                        }
+                    },
+                    spacing: {
+                        'safe-bottom': 'env(safe-area-inset-bottom)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        /* モダン・クリーンUI用カスタムCSS */
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #f8fafc;
+            overscroll-behavior-y: none;
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        /* タブ切り替えの確実な制御 (!importantによりTailwindのflex等のクラスとの競合を防止) */
+        .tab-content:not(.active) { display: none !important; }
+        .tab-content.active { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+            color: #1e293b; font-weight: bold; margin-top: 1.5em; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3em;
+        }
+        .markdown-body h2 { font-size: 1.25rem; }
+        .markdown-body h3 { font-size: 1.1rem; border-bottom: none; }
+        .markdown-body p { margin-bottom: 1em; line-height: 1.6; color: #334155; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+        .markdown-body li { margin-bottom: 0.25em; color: #334155; }
+        .markdown-body strong { color: #0f172a; }
+
+        /* スクロールバー非表示（モダンUI） */
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        
+        /* チャット吹き出し */
+        .chat-user { background-color: #4f46e5; color: white; border-radius: 1rem 1rem 0 1rem; }
+        .chat-ai { background-color: #ffffff; color: #1e293b; border-radius: 1rem 1rem 1rem 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+        /* ローディングインジケーター */
+        .dot-flashing {
+            position: relative; width: 8px; height: 8px; border-radius: 5px; background-color: #4f46e5; color: #4f46e5;
+            animation: dot-flashing 1s infinite linear alternate; animation-delay: 0.5s;
+        }
+        .dot-flashing::before, .dot-flashing::after {
+            content: ''; display: inline-block; position: absolute; top: 0; width: 8px; height: 8px; border-radius: 5px; background-color: #4f46e5; color: #4f46e5;
+            animation: dot-flashing 1s infinite alternate;
+        }
+        .dot-flashing::before { left: -12px; animation-delay: 0s; }
+        .dot-flashing::after { left: 12px; animation-delay: 1s; }
+        @keyframes dot-flashing { 0% { background-color: #4f46e5; } 50%, 100% { background-color: #e0e7ff; } }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-800">
+
+    <!-- ヘッダー -->
+    <header class="bg-white shadow-sm z-10 px-4 py-3 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-moon text-astro text-xl"></i>
+            <h1 class="text-xl font-bold text-slate-800 tracking-tight">AstroInsight</h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="wake-lock-status" class="hidden text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full flex items-center gap-1">
+                <i class="fa-solid fa-lock"></i> 実行中
+            </div>
+            <button onclick="app.ui.switchTab('settings')" class="text-slate-500 hover:text-astro transition">
+                <i class="fa-solid fa-gear text-xl"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ領域 -->
+    <main class="flex-1 overflow-y-auto relative pb-20" id="main-container">
+        
+        <!-- タブ: プロフィール -->
+        <div id="tab-profile" class="tab-content active p-4 max-w-lg mx-auto">
+            <h2 class="text-lg font-bold mb-4 text-slate-700"><i class="fa-solid fa-user-astronaut mr-2"></i>あなたのプロフィール</h2>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">お名前 / ニックネーム</label>
+                    <input type="text" id="profile-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro focus:border-transparent transition" placeholder="例: アリス">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">生年月日</label>
+                    <input type="date" id="profile-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro focus:border-transparent transition">
+                </div>
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-slate-600 mb-1">出生時間</label>
+                        <input type="time" id="profile-time" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro transition">
+                        <p class="text-xs text-slate-400 mt-1">※不明な場合は空白</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">出生地（都道府県・市区町村）</label>
+                    <input type="text" id="profile-place" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro transition" placeholder="例: 東京都渋谷区">
+                </div>
+                <button onclick="app.saveProfile()" class="w-full bg-astro hover:bg-astro-dark text-white font-bold py-3 px-4 rounded-xl shadow-md transition transform active:scale-95 flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-floppy-disk"></i> 保存して分析へ
+                </button>
+            </div>
+        </div>
+
+        <!-- タブ: 自己分析 -->
+        <div id="tab-analysis" class="tab-content p-4 max-w-2xl mx-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-700"><i class="fa-solid fa-sparkles mr-2"></i>AI深層自己分析</h2>
+                <button onclick="app.generateAnalysis()" class="bg-astro text-white px-4 py-2 rounded-full text-sm font-bold shadow-md hover:bg-astro-dark transition active:scale-95 flex items-center gap-1">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> 生成・更新
+                </button>
+            </div>
+            
+            <div id="analysis-result" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 markdown-body min-h-[300px]">
+                <div class="text-center text-slate-400 py-10">
+                    <i class="fa-solid fa-user-astronaut text-4xl mb-3 opacity-50"></i>
+                    <p>プロフィールを入力し、生成ボタンを押して<br>ホロスコープの深層分析を開始してください。</p>
+                </div>
+            </div>
+            <!-- レジュームステータス -->
+            <div id="resume-notice" class="hidden mt-4 bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex justify-between items-center border border-blue-200">
+                <span><i class="fa-solid fa-rotate-right mr-1"></i> 中断された生成データがあります。</span>
+                <button onclick="app.resumeGeneration()" class="font-bold underline">再開する</button>
+            </div>
+        </div>
+
+        <!-- タブ: タイムライン -->
+        <div id="tab-timeline" class="tab-content p-4 max-w-2xl mx-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-700"><i class="fa-solid fa-cloud-sun-rain mr-2"></i>星のタイムライン</h2>
+                <button onclick="app.generateTimeline()" class="bg-astro text-white px-4 py-2 rounded-full text-sm font-bold shadow-md hover:bg-astro-dark transition active:scale-95 flex items-center gap-1">
+                    <i class="fa-solid fa-satellite-dish"></i> 予測開始
+                </button>
+            </div>
+            <p class="text-sm text-slate-500 mb-4">今後1年間のトランジット（現在の星の動き）があなたに与える影響の強さとテーマを視覚化します。</p>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-4">
+                <canvas id="timelineChart" height="200"></canvas>
+            </div>
+            
+            <div id="timeline-details" class="space-y-4">
+                <!-- タイムライン詳細カードがここに挿入される -->
+                <div class="text-center text-slate-400 py-6">
+                    <p>予測を開始すると、月ごとの詳細な解説が表示されます。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- タブ: チャット (独立したペイン画面として機能) -->
+        <div id="tab-chat" class="tab-content flex-col h-full max-w-2xl mx-auto">
+            <div class="px-4 py-3 bg-white border-b border-slate-100 shrink-0">
+                <h2 class="text-lg font-bold text-slate-700"><i class="fa-regular fa-comments mr-2"></i>星占い師AIチャット</h2>
+                <p class="text-xs text-slate-500">あなたのホロスコープ情報を記憶しています。なんでも聞いてください。</p>
+            </div>
+            <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 pb-4">
+                <!-- 初期メッセージ -->
+                <div class="flex justify-start">
+                    <div class="chat-ai px-4 py-3 max-w-[85%] text-sm leading-relaxed">
+                        こんにちは！あなたのホロスコープデータに基づき、さらに詳しい自己分析や、特定の悩みについてアドバイスします。何について知りたいですか？
+                    </div>
+                </div>
+            </div>
+            <div class="p-3 bg-slate-50 border-t border-slate-200 shrink-0 pb-safe pb-8">
+                <form id="chat-form" class="flex gap-2 relative">
+                    <input type="text" id="chat-input" class="flex-1 bg-white border border-slate-300 rounded-full pl-4 pr-12 py-3 text-sm outline-none focus:border-astro focus:ring-1 focus:ring-astro transition" placeholder="メッセージを入力...">
+                    <button type="submit" class="absolute right-1 top-1 bottom-1 w-10 bg-astro text-white rounded-full flex justify-center items-center hover:bg-astro-dark transition">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- タブ: 設定 -->
+        <div id="tab-settings" class="tab-content p-4 max-w-lg mx-auto">
+            <h2 class="text-lg font-bold mb-4 text-slate-700"><i class="fa-solid fa-gear mr-2"></i>設定・データ管理</h2>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-4">
+                <h3 class="font-bold text-slate-700 mb-2 border-b pb-2">API設定 (Gemini 2.5 Flash)</h3>
+                <p class="text-xs text-slate-500 mb-3">Google AI Studioで取得したAPIキーを入力してください。キーはブラウザ内にのみ安全に保存されます。</p>
+                
+                <!-- APIキー保存済みステータス -->
+                <div id="api-key-status" class="hidden flex items-center gap-2 mb-3 text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg text-sm font-medium border border-emerald-200">
+                    <i class="fa-solid fa-lock"></i> APIキーは安全に保存されています
+                </div>
+
+                <input type="password" id="api-key-input" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro transition mb-3" placeholder="APIキーを入力（または更新）...">
+                <button onclick="app.saveApiKey()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-xl transition">
+                    APIキーを保存・更新
+                </button>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-3">
+                <h3 class="font-bold text-slate-700 mb-2 border-b pb-2">データ管理 (5世代バックアップ)</h3>
+                <button onclick="app.exportData()" class="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold py-2 rounded-xl transition flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-download"></i> バックアップをダウンロード (JSON)
+                </button>
+                <label class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold py-2 rounded-xl transition flex justify-center items-center gap-2 cursor-pointer">
+                    <i class="fa-solid fa-upload"></i> データを復元 (インポート)
+                    <input type="file" id="import-file" accept=".json" class="hidden" onchange="app.importData(event)">
+                </label>
+                <button onclick="app.restoreFromBackup()" class="w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold py-2 rounded-xl transition flex justify-center items-center gap-2 mt-4">
+                    <i class="fa-solid fa-clock-rotate-left"></i> ローカルの直近バックアップへ戻す
+                </button>
+                <button onclick="app.clearAllData()" class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-2 rounded-xl transition mt-4">
+                    全データを消去
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ボトムナビゲーション -->
+    <nav class="glass-nav absolute bottom-0 w-full z-20 pb-safe">
+        <ul class="flex justify-around items-center h-16 px-2">
+            <li>
+                <button onclick="app.ui.switchTab('profile')" class="nav-btn active-nav w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
+                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
+                        <i class="fa-solid fa-user text-lg"></i>
+                    </div>
+                    <span class="text-[10px] font-medium mt-1">プロフ</span>
+                </button>
+            </li>
+            <li>
+                <button onclick="app.ui.switchTab('analysis')" class="nav-btn w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
+                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
+                        <i class="fa-solid fa-star text-lg"></i>
+                    </div>
+                    <span class="text-[10px] font-medium mt-1">自己分析</span>
+                </button>
+            </li>
+            <li>
+                <button onclick="app.ui.switchTab('timeline')" class="nav-btn w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
+                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
+                        <i class="fa-solid fa-chart-line text-lg"></i>
+                    </div>
+                    <span class="text-[10px] font-medium mt-1">タイムライン</span>
+                </button>
+            </li>
+            <li>
+                <button onclick="app.ui.switchTab('chat')" class="nav-btn w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
+                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
+                        <i class="fa-solid fa-message text-lg"></i>
+                    </div>
+                    <span class="text-[10px] font-medium mt-1">AIチャット</span>
+                </button>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- 生成中オーバーレイ -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex flex-col justify-center items-center">
+        <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center max-w-xs w-full text-center">
+            <div class="text-4xl text-astro mb-4 animate-spin"><i class="fa-solid fa-compass"></i></div>
+            <h3 class="font-bold text-slate-800 mb-2">星々を読み解いています...</h3>
+            <p class="text-xs text-slate-500 mb-4">複雑なホロスコープをAIが分析中です。<br>画面を閉じても裏で処理が継続されます。</p>
+            <div class="dot-flashing mb-2"></div>
+        </div>
+    </div>
+
+    <!-- JavaScript ロジック -->
+    <script>
+        // --- 1. Service Worker & PWA ---
+        const swCode = `
+        const CACHE_NAME = 'astro-v1';
+        self.addEventListener('install', e => self.skipWaiting());
+        self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+        self.addEventListener('fetch', e => {
+            if(e.request.method !== 'GET') return;
+            e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+        });
+        `;
+        const swBlob = new Blob([swCode], {type: 'application/javascript'});
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(console.error);
+        }
+
+        const manifest = {
+            name: "AstroInsight",
+            short_name: "Astro",
+            display: "standalone",
+            background_color: "#f8fafc",
+            theme_color: "#4f46e5",
+            icons: [{"src": "data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%234f46e5'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>✦</text></svg>", "sizes": "192x192", "type": "image/svg+xml"}]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+        document.head.insertAdjacentHTML('beforeend', `<link rel="manifest" href="${URL.createObjectURL(manifestBlob)}">`);
+
+        // --- 2. Web Worker (AI通信用・非同期実行) ---
+        const workerCode = `
+        self.onmessage = async function(e) {
+            const { action, apiKey, prompt, isJson } = e.data;
+            if (action !== 'generate') return;
+            
+            try {
+                const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=' + apiKey;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || 'API Request Failed');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\\n');
+                    for(let line of lines) {
+                        if(line.startsWith('data: ')) {
+                           try {
+                               const data = JSON.parse(line.substring(6));
+                               if(data.candidates && data.candidates[0].content.parts[0].text) {
+                                   const text = data.candidates[0].content.parts[0].text;
+                                   fullText += text;
+                                   if(!isJson) self.postMessage({ type: 'chunk', text: fullText });
+                               }
+                           } catch(err) {} 
+                        }
+                    }
+                    try{
+                        const parsed = JSON.parse(chunk);
+                        if(Array.isArray(parsed)) {
+                            parsed.forEach(p => {
+                                if(p.candidates && p.candidates[0].content.parts[0].text) {
+                                    const t = p.candidates[0].content.parts[0].text;
+                                    fullText += t;
+                                    if(!isJson) self.postMessage({ type: 'chunk', text: fullText });
+                                }
+                            });
+                        }
+                    } catch(e){}
+                }
+                
+                self.postMessage({ type: 'done', text: fullText });
+
+            } catch (error) {
+                self.postMessage({ type: 'error', message: error.message });
+            }
+        };
+        `;
+        const workerBlob = new Blob([workerCode], {type: 'application/javascript'});
+
+        // --- 3. アプリケーションロジック ---
+        class AstroApp {
+            constructor() {
+                this.dbName = 'AstroInsightDB';
+                this.dbVersion = 1;
+                this.db = null;
+                this.worker = new Worker(URL.createObjectURL(workerBlob));
+                this.wakeLock = null;
+                this.chartInstance = null;
+                this.isGenerating = false;
+                
+                this.setupWorkerListeners();
+                this.ui = new UIController(this);
+                this.init();
+            }
+
+            async init() {
+                await this.initDB();
+                await this.loadSettings();
+                await this.loadProfile();
+                await this.loadAnalysis();
+                await this.loadTimeline();
+                await this.loadChat();
+                this.ui.setupEventListeners();
+                this.checkResumeState();
+                
+                // オートセーブ設定
+                const inputs = ['profile-name', 'profile-date', 'profile-time', 'profile-place'];
+                inputs.forEach(id => {
+                    document.getElementById(id).addEventListener('input', this.debounce(() => this.saveProfile(true), 1000));
+                });
+            }
+
+            // --- Database Management ---
+            initDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.dbName, this.dbVersion);
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if(!db.objectStoreNames.contains('store')) db.createObjectStore('store');
+                        if(!db.objectStoreNames.contains('backups')) db.createObjectStore('backups');
+                    };
+                    request.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            }
+
+            async getDB(key) {
+                if (!this.db) await this.initDB();
+                return new Promise((resolve) => {
+                    const tx = this.db.transaction('store', 'readonly');
+                    const req = tx.objectStore('store').get(key);
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => resolve(null);
+                });
+            }
+
+            async setDB(key, value) {
+                if (!this.db) await this.initDB();
+                return new Promise((resolve, reject) => {
+                    const tx = this.db.transaction('store', 'readwrite');
+                    tx.objectStore('store').put(value, key);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = (e) => reject(e.target.error);
+                });
+            }
+
+            async autoBackup() {
+                const data = await this.exportDataJSON();
+                const tx = this.db.transaction('backups', 'readwrite');
+                const store = tx.objectStore('backups');
+                const timestamp = Date.now();
+                store.put(data, timestamp);
+                
+                const req = store.getAllKeys();
+                req.onsuccess = () => {
+                    const keys = req.result.sort((a,b) => a - b);
+                    if (keys.length > 5) {
+                        for(let i=0; i < keys.length - 5; i++) {
+                            store.delete(keys[i]);
+                        }
+                    }
+                };
+            }
+
+            // --- Data Load/Save ---
+            async loadSettings() {
+                const apiKey = await this.getDB('api_key');
+                const statusEl = document.getElementById('api-key-status');
+                const inputEl = document.getElementById('api-key-input');
+                
+                if(apiKey) {
+                    statusEl.classList.remove('hidden');
+                    inputEl.value = '';
+                    inputEl.placeholder = '•••••••••••••••• (保存済み)';
+                } else {
+                    statusEl.classList.add('hidden');
+                    inputEl.placeholder = 'APIキーを入力（または更新）...';
+                }
+            }
+
+            async saveApiKey() {
+                const inputEl = document.getElementById('api-key-input');
+                const key = inputEl.value.trim();
+                
+                if(!key) return alert('APIキーを入力してください。');
+                
+                try {
+                    await this.setDB('api_key', key);
+                    
+                    const statusEl = document.getElementById('api-key-status');
+                    statusEl.classList.remove('hidden');
+                    inputEl.value = '';
+                    inputEl.placeholder = '•••••••••••••••• (保存済み)';
+                    
+                    alert('APIキーを安全に保存しました。');
+                } catch(error) {
+                    console.error('API Key Save Error:', error);
+                    alert('APIキーの保存に失敗しました: ' + error.message);
+                }
+            }
+
+            async loadProfile() {
+                const p = await this.getDB('profile');
+                if(p) {
+                    document.getElementById('profile-name').value = p.name || '';
+                    document.getElementById('profile-date').value = p.date || '';
+                    document.getElementById('profile-time').value = p.time || '';
+                    document.getElementById('profile-place').value = p.place || '';
+                }
+            }
+
+            async saveProfile(silent = false) {
+                const p = {
+                    name: document.getElementById('profile-name').value.trim(),
+                    date: document.getElementById('profile-date').value,
+                    time: document.getElementById('profile-time').value,
+                    place: document.getElementById('profile-place').value.trim()
+                };
+                if(!silent && (!p.name || !p.date || !p.place)) {
+                    return alert('名前、生年月日、出生地は必須です。');
+                }
+                await this.setDB('profile', p);
+                if(!silent) {
+                    await this.autoBackup();
+                    this.ui.switchTab('analysis');
+                }
+            }
+
+            getProfileString() {
+                const p = {
+                    name: document.getElementById('profile-name').value.trim(),
+                    date: document.getElementById('profile-date').value,
+                    time: document.getElementById('profile-time').value,
+                    place: document.getElementById('profile-place').value.trim()
+                };
+                if(!p.name || !p.date) return null;
+                return `名前: ${p.name}, 生年月日: ${p.date}, 出生時間: ${p.time || '不明'}, 出生地: ${p.place}`;
+            }
+
+            // --- AI Generation Logic ---
+            async requestWakeLock() {
+                if ('wakeLock' in navigator) {
+                    try {
+                        this.wakeLock = await navigator.wakeLock.request('screen');
+                        document.getElementById('wake-lock-status').classList.remove('hidden');
+                    } catch (err) { console.error('WakeLock Error:', err); }
+                }
+            }
+            releaseWakeLock() {
+                if (this.wakeLock) {
+                    this.wakeLock.release().then(() => {
+                        this.wakeLock = null;
+                        document.getElementById('wake-lock-status').classList.add('hidden');
+                    });
+                }
+            }
+
+            setupWorkerListeners() {
+                this.worker.onmessage = async (e) => {
+                    const data = e.data;
+                    if(data.type === 'chunk') {
+                        if(this.currentTask === 'analysis') {
+                            const resDiv = document.getElementById('analysis-result');
+                            resDiv.innerHTML = marked.parse(data.text);
+                            await this.setDB('resume_state', { task: 'analysis', text: data.text });
+                        }
+                    } else if (data.type === 'done') {
+                        this.finishGeneration(data.text);
+                    } else if (data.type === 'error') {
+                        this.handleError(data.message);
+                    }
+                };
+            }
+
+            async startGeneration(task, prompt, isJson = false) {
+                const apiKey = await this.getDB('api_key');
+                if(!apiKey) {
+                    alert('設定タブからGemini APIキーを設定してください。');
+                    this.ui.switchTab('settings');
+                    return;
+                }
+                
+                this.isGenerating = true;
+                this.currentTask = task;
+                this.currentPrompt = prompt;
+                this.isJsonTask = isJson;
+                
+                await this.requestWakeLock();
+                document.getElementById('loading-overlay').classList.remove('hidden');
+                
+                await this.setDB('resume_state', { task: task, text: '', prompt: prompt, isJson: isJson });
+                this.worker.postMessage({ action: 'generate', apiKey, prompt, isJson });
+            }
+
+            async finishGeneration(finalText) {
+                this.isGenerating = false;
+                document.getElementById('loading-overlay').classList.add('hidden');
+                this.releaseWakeLock();
+                
+                try {
+                    if (this.currentTask === 'analysis') {
+                        document.getElementById('analysis-result').innerHTML = marked.parse(finalText);
+                        await this.setDB('analysis_result', finalText);
+                    } else if (this.currentTask === 'chat') {
+                        await this.addChatMessage('model', finalText);
+                    } else if (this.currentTask === 'timeline') {
+                        await this.processTimelineResult(finalText);
+                    }
+                    
+                    await this.setDB('resume_state', null);
+                    await this.autoBackup();
+                    
+                } catch(e) {
+                    this.handleError(e.message);
+                }
+            }
+
+            handleError(msg) {
+                this.isGenerating = false;
+                document.getElementById('loading-overlay').classList.add('hidden');
+                this.releaseWakeLock();
+                alert('AI生成エラー: ' + msg);
+            }
+
+            async checkResumeState() {
+                const state = await this.getDB('resume_state');
+                if(state && state.text && state.task === 'analysis') {
+                    document.getElementById('resume-notice').classList.remove('hidden');
+                }
+            }
+
+            async resumeGeneration() {
+                const state = await this.getDB('resume_state');
+                if(state) {
+                    document.getElementById('resume-notice').classList.add('hidden');
+                    if(state.task === 'analysis') {
+                        document.getElementById('analysis-result').innerHTML = marked.parse(state.text) + "\n\n*(中断されました。完全に取得するには再生成してください)*";
+                        this.ui.switchTab('analysis');
+                    }
+                }
+            }
+
+            // --- Features ---
+            async loadAnalysis() {
+                const res = await this.getDB('analysis_result');
+                if(res) {
+                    document.getElementById('analysis-result').innerHTML = marked.parse(res);
+                }
+            }
+
+            async generateAnalysis() {
+                const profileStr = this.getProfileString();
+                if(!profileStr) return alert('プロフィールを正しく入力してください。');
+                
+                const prompt = `あなたは世界トップクラスの占星術師です。以下のクライアントのプロフィール情報から、主要な天体配置（太陽、月、水星、金星、火星などのサイン、ハウス、主要アスペクト）を推測・計算し、個人の「強み」「課題」「潜在能力」に焦点を当てた深く洞察に満ちた自己分析を行ってください。専門用語は控えめに、温かく励ますようなトーンでマークダウン形式で出力してください。\nプロフィール: ${profileStr}`;
+                
+                document.getElementById('analysis-result').innerHTML = '';
+                this.startGeneration('analysis', prompt, false);
+            }
+
+            async generateTimeline() {
+                const profileStr = this.getProfileString();
+                if(!profileStr) return alert('プロフィールを正しく入力してください。');
+                
+                const prompt = `占星術師として、以下のプロフィールを持つ人物の【今後1年間（来月から12ヶ月間）】のトランジット（現在の星の運行）による影響を分析してください。
+                出力は必ず以下のJSON配列形式のみとしてください（マークダウンブロックやその他のテキストは一切含めないでください）。
+                
+                フォーマット:
+                [
+                  {
+                    "month": "2024-05", // 例: YYYY-MM形式
+                    "impact": 80, // 影響度 0〜100 の数値
+                    "theme": "キャリアと転機", // その月の主要テーマ（短く）
+                    "description": "木星が天頂を通過し..." // 詳細な解説（2-3文程度）
+                  }, ... (12ヶ月分)
+                ]
+                
+                プロフィール: ${profileStr}`;
+                
+                this.startGeneration('timeline', prompt, true);
+            }
+
+            async processTimelineResult(text) {
+                try {
+                    const jsonMatch = text.match(/\[[\s\S]*\]/);
+                    if(!jsonMatch) throw new Error("JSONデータの抽出に失敗しました。");
+                    
+                    const data = JSON.parse(jsonMatch[0]);
+                    await this.setDB('timeline_data', data);
+                    this.renderTimeline(data);
+                } catch(e) {
+                    this.handleError('時系列データの解析に失敗しました: ' + e.message);
+                }
+            }
+
+            async loadTimeline() {
+                const data = await this.getDB('timeline_data');
+                if(data) this.renderTimeline(data);
+            }
+
+            renderTimeline(data) {
+                const labels = data.map(d => d.month);
+                const impacts = data.map(d => d.impact);
+                
+                const ctx = document.getElementById('timelineChart').getContext('2d');
+                if(this.chartInstance) this.chartInstance.destroy();
+                
+                this.chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '星の影響度 (雨雲レーダー)',
+                            data: impacts,
+                            borderColor: '#4f46e5',
+                            backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#fff',
+                            pointBorderColor: '#4f46e5',
+                            pointBorderWidth: 2,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: { y: { min: 0, max: 100 } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+
+                const detailsContainer = document.getElementById('timeline-details');
+                detailsContainer.innerHTML = '';
+                data.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-xl shadow-sm border border-slate-100 p-4 border-l-4 border-l-astro fade-in';
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="font-bold text-slate-700">${item.month} <span class="text-sm font-normal text-slate-500 ml-2">${item.theme}</span></h4>
+                            <span class="text-xs font-bold px-2 py-1 rounded bg-astro-light text-astro">影響度: ${item.impact}</span>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">${item.description}</p>
+                    `;
+                    detailsContainer.appendChild(card);
+                });
+            }
+
+            // --- Chat Logic ---
+            async loadChat() {
+                const chats = await this.getDB('chat_history') || [];
+                const container = document.getElementById('chat-messages');
+                
+                if(chats.length > 0) {
+                    container.innerHTML = '';
+                    chats.forEach(c => this.ui.appendChatBubble(c.role, c.text));
+                    setTimeout(()=> container.scrollTop = container.scrollHeight, 100);
+                }
+            }
+
+            async handleChatSubmit(e) {
+                e.preventDefault();
+                const input = document.getElementById('chat-input');
+                const text = input.value.trim();
+                if(!text) return;
+                
+                input.value = '';
+                await this.addChatMessage('user', text);
+                
+                const profileStr = this.getProfileString() || '未設定';
+                const analysisStr = await this.getDB('analysis_result') || 'まだ分析されていません。';
+                let chats = await this.getDB('chat_history') || [];
+                const recentChats = chats.slice(-10).map(c => `${c.role === 'user' ? 'ユーザー' : 'AI'}: ${c.text}`).join('\n');
+
+                const prompt = `あなたはプロの占星術師AIです。クライアントからチャットで質問が来ました。
+                以下のプロフィールと過去の分析結果、これまでの会話履歴を踏まえ、親身に、かつ占星術の知識を用いて的確に回答してください。回答はチャットに適した簡潔な長さ（300文字以内）で出力してください。
+                
+                【プロフィール】
+                ${profileStr}
+                
+                【自己分析ベース】
+                ${analysisStr.substring(0, 500)}...
+                
+                【会話履歴】
+                ${recentChats}
+                
+                ユーザーの最新の質問: ${text}
+                AIの回答:`;
+                
+                this.startGeneration('chat', prompt, false);
+            }
+
+            async addChatMessage(role, text) {
+                let chats = await this.getDB('chat_history') || [];
+                chats.push({ role, text, time: Date.now() });
+                await this.setDB('chat_history', chats);
+                this.ui.appendChatBubble(role, text);
+            }
+
+            // --- Data Export/Import ---
+            async exportDataJSON() {
+                const keys = ['api_key', 'profile', 'analysis_result', 'timeline_data', 'chat_history'];
+                const data = {};
+                for(let k of keys) {
+                    data[k] = await this.getDB(k);
+                }
+                return data;
+            }
+
+            async exportData() {
+                const data = await this.exportDataJSON();
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `astro_backup_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+            }
+
+            importData(e) {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        for(let k in data) {
+                            await this.setDB(k, data[k]);
+                        }
+                        alert('データを復元しました。アプリを再読み込みします。');
+                        location.reload();
+                    } catch(err) {
+                        alert('ファイルの読み込みに失敗しました。');
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            async restoreFromBackup() {
+                const tx = this.db.transaction('backups', 'readonly');
+                const store = tx.objectStore('backups');
+                const req = store.getAll();
+                req.onsuccess = async () => {
+                    const backups = req.result;
+                    if(backups.length === 0) return alert('バックアップがありません。');
+                    const latest = backups[backups.length - 1];
+                    for(let k in latest) {
+                        await this.setDB(k, latest[k]);
+                    }
+                    alert('直近のバックアップから復元しました。再読み込みします。');
+                    location.reload();
+                };
+            }
+
+            async clearAllData() {
+                if(!confirm('すべてのデータを消去しますか？この操作は元に戻せません。')) return;
+                const tx = this.db.transaction(['store', 'backups'], 'readwrite');
+                tx.objectStore('store').clear();
+                tx.objectStore('backups').clear();
+                tx.oncomplete = () => {
+                    alert('初期化しました。');
+                    location.reload();
+                };
+            }
+
+            // Utils
+            debounce(func, wait) {
+                let timeout;
+                return function(...args) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), wait);
+                };
+            }
+        }
+
+        // --- UI Controller ---
+        class UIController {
+            constructor(app) {
+                this.app = app;
+            }
+
+            setupEventListeners() {
+                document.getElementById('chat-form').addEventListener('submit', (e) => this.app.handleChatSubmit(e));
+            }
+
+            switchTab(tabId) {
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                document.getElementById(`tab-${tabId}`).classList.add('active');
+                
+                document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active-nav'));
+                const tabMap = { 'profile': 0, 'analysis': 1, 'timeline': 2, 'chat': 3 };
+                if(tabMap[tabId] !== undefined) {
+                    document.querySelectorAll('.nav-btn')[tabMap[tabId]].classList.add('active-nav');
+                }
+            }
+
+            appendChatBubble(role, text) {
+                const container = document.getElementById('chat-messages');
+                const div = document.createElement('div');
+                div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} fade-in`;
+                
+                const bubble = document.createElement('div');
+                bubble.className = `px-4 py-3 max-w-[85%] text-sm leading-relaxed ${role === 'user' ? 'chat-user' : 'chat-ai'}`;
+                
+                if (role === 'model') {
+                    bubble.innerHTML = marked.parse(text);
+                } else {
+                    bubble.textContent = text;
+                }
+
+                div.appendChild(bubble);
+                container.appendChild(div);
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        // アプリ起動
+        const app = new AstroApp();
+
+    </script>
+</body>
+</html>
