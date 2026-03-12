@@ -46,11 +46,12 @@
             border-top: 1px solid rgba(0, 0, 0, 0.05);
         }
         
-        /* タブ切り替えの確実な制御 (!importantによりTailwindのflex等のクラスとの競合を防止) */
         .tab-content:not(.active) { display: none !important; }
         .tab-content.active { animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         
+        /* Markdown スタイル強化（表組み対応・横スクロール防止） */
+        .markdown-body { word-wrap: break-word; overflow-wrap: break-word; }
         .markdown-body h1, .markdown-body h2, .markdown-body h3 {
             color: #1e293b; font-weight: bold; margin-top: 1.5em; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3em;
         }
@@ -60,15 +61,15 @@
         .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
         .markdown-body li { margin-bottom: 0.25em; color: #334155; }
         .markdown-body strong { color: #0f172a; }
+        .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1em; display: block; overflow-x: auto; white-space: nowrap; font-size: 0.85rem; }
+        .markdown-body th, .markdown-body td { border: 1px solid #e2e8f0; padding: 0.5em 0.75em; text-align: left; }
+        .markdown-body th { background-color: #f1f5f9; font-weight: bold; color: #1e293b; }
 
-        /* スクロールバー非表示（モダンUI） */
         ::-webkit-scrollbar { width: 0px; background: transparent; }
         
-        /* チャット吹き出し */
         .chat-user { background-color: #4f46e5; color: white; border-radius: 1rem 1rem 0 1rem; }
         .chat-ai { background-color: #ffffff; color: #1e293b; border-radius: 1rem 1rem 1rem 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 
-        /* ローディングインジケーター */
         .dot-flashing {
             position: relative; width: 8px; height: 8px; border-radius: 5px; background-color: #4f46e5; color: #4f46e5;
             animation: dot-flashing 1s infinite linear alternate; animation-delay: 0.5s;
@@ -80,11 +81,22 @@
         .dot-flashing::before { left: -12px; animation-delay: 0s; }
         .dot-flashing::after { left: 12px; animation-delay: 1s; }
         @keyframes dot-flashing { 0% { background-color: #4f46e5; } 50%, 100% { background-color: #e0e7ff; } }
+
+        /* スワイプカルーセル (タイムライン用) */
+        .timeline-carousel {
+            display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+        }
+        .timeline-carousel { gap: 1rem; padding-bottom: 1rem; scrollbar-width: none; -ms-overflow-style: none; }
+        .timeline-carousel::-webkit-scrollbar { display: none; }
+        .timeline-card { flex: 0 0 85%; scroll-snap-align: center; }
+        
+        /* details アコーディオン用 */
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden text-slate-800">
 
-    <!-- ヘッダー -->
     <header class="bg-white shadow-sm z-10 px-4 py-3 flex justify-between items-center shrink-0">
         <div class="flex items-center gap-2">
             <i class="fa-solid fa-moon text-astro text-xl"></i>
@@ -100,20 +112,19 @@
         </div>
     </header>
 
-    <!-- メインコンテンツ領域 -->
     <main class="flex-1 overflow-y-auto relative pb-20" id="main-container">
         
-        <!-- タブ: プロフィール -->
+        <!-- プロフィール -->
         <div id="tab-profile" class="tab-content active p-4 max-w-lg mx-auto">
             <h2 class="text-lg font-bold mb-4 text-slate-700"><i class="fa-solid fa-user-astronaut mr-2"></i>あなたのプロフィール</h2>
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-600 mb-1">お名前 / ニックネーム</label>
-                    <input type="text" id="profile-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro focus:border-transparent transition" placeholder="例: アリス">
+                    <input type="text" id="profile-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro transition" placeholder="例: アリス">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-600 mb-1">生年月日</label>
-                    <input type="date" id="profile-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro focus:border-transparent transition">
+                    <input type="date" id="profile-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-astro transition">
                 </div>
                 <div class="flex gap-4">
                     <div class="flex-1">
@@ -132,10 +143,10 @@
             </div>
         </div>
 
-        <!-- タブ: 自己分析 -->
+        <!-- 自己分析 -->
         <div id="tab-analysis" class="tab-content p-4 max-w-2xl mx-auto">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-bold text-slate-700"><i class="fa-solid fa-sparkles mr-2"></i>AI深層自己分析</h2>
+                <h2 class="text-lg font-bold text-slate-700"><i class="fa-solid fa-sparkles mr-2"></i>自己分析</h2>
                 <button onclick="app.generateAnalysis()" class="bg-astro text-white px-4 py-2 rounded-full text-sm font-bold shadow-md hover:bg-astro-dark transition active:scale-95 flex items-center gap-1">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> 生成・更新
                 </button>
@@ -144,46 +155,95 @@
             <div id="analysis-result" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 markdown-body min-h-[300px]">
                 <div class="text-center text-slate-400 py-10">
                     <i class="fa-solid fa-user-astronaut text-4xl mb-3 opacity-50"></i>
-                    <p>プロフィールを入力し、生成ボタンを押して<br>ホロスコープの深層分析を開始してください。</p>
+                    <p>プロフィールを入力し、生成ボタンを押して<br>ポジティブで超ポップな自己分析を開始してください！</p>
                 </div>
             </div>
-            <!-- レジュームステータス -->
             <div id="resume-notice" class="hidden mt-4 bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex justify-between items-center border border-blue-200">
                 <span><i class="fa-solid fa-rotate-right mr-1"></i> 中断された生成データがあります。</span>
                 <button onclick="app.resumeGeneration()" class="font-bold underline">再開する</button>
             </div>
         </div>
 
-        <!-- タブ: タイムライン -->
-        <div id="tab-timeline" class="tab-content p-4 max-w-2xl mx-auto">
-            <div class="flex justify-between items-center mb-4">
+        <!-- ホロスコープ (トランジット) -->
+        <div id="tab-horoscope" class="tab-content p-4 max-w-2xl mx-auto h-full flex-col">
+            <h2 class="text-lg font-bold mb-1 text-slate-700 shrink-0"><i class="fa-solid fa-meteor mr-2"></i>星の動き (トランジット)</h2>
+            <p class="text-xs text-slate-500 mb-3 shrink-0">あなたの出生図(ネイタル)に対して、指定した日時の星がどう影響するかを分析します。</p>
+            
+            <!-- アコーディオン入力部 -->
+            <details id="horoscope-details" class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-3 shrink-0 group" open>
+                <summary class="p-3 font-bold text-sm text-slate-700 cursor-pointer flex justify-between items-center outline-none">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-calendar-day text-astro"></i> 分析日時を指定する</span>
+                    <i class="fa-solid fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform"></i>
+                </summary>
+                <div class="p-3 pt-0 border-t border-slate-50 mt-1">
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">見たい年月日</label>
+                            <input type="date" id="horoscope-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-astro transition">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">見たい時間 (任意)</label>
+                            <input type="time" id="horoscope-time" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-astro transition">
+                        </div>
+                    </div>
+                    <button onclick="app.generateHoroscope()" class="w-full bg-astro text-white py-2 rounded-xl text-sm font-bold shadow-md hover:bg-astro-dark transition active:scale-95 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i> 星の動きを分析
+                    </button>
+                </div>
+            </details>
+            
+            <!-- 履歴選択ドロップダウン -->
+            <div id="horoscope-history-container" class="hidden mb-3 shrink-0">
+                <div class="relative">
+                    <select id="horoscope-history-select" onchange="app.ui.selectHoroscopeHistory(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-astro appearance-none cursor-pointer">
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                        <i class="fa-solid fa-chevron-down text-sm"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分析結果表示エリア (縦スクロール) -->
+            <div class="flex-1 overflow-y-auto bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <div id="horoscope-result" class="markdown-body text-sm min-h-[300px]">
+                    <div class="text-center text-slate-400 py-6">
+                        <i class="fa-solid fa-planet-moon text-4xl mb-3 opacity-50"></i>
+                        <p class="text-sm">日付を指定して分析すると、本格的な天体配置表と<br>専門的な解説がここに追加されます。</p>
+                        <p class="text-xs mt-2">内容は縦にスクロールして読むことができます。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- タイムライン -->
+        <div id="tab-timeline" class="tab-content p-4 max-w-2xl mx-auto flex-col h-full">
+            <div class="flex justify-between items-center mb-2 shrink-0">
                 <h2 class="text-lg font-bold text-slate-700"><i class="fa-solid fa-cloud-sun-rain mr-2"></i>星のタイムライン</h2>
                 <button onclick="app.generateTimeline()" class="bg-astro text-white px-4 py-2 rounded-full text-sm font-bold shadow-md hover:bg-astro-dark transition active:scale-95 flex items-center gap-1">
                     <i class="fa-solid fa-satellite-dish"></i> 予測開始
                 </button>
             </div>
-            <p class="text-sm text-slate-500 mb-4">今後1年間のトランジット（現在の星の動き）があなたに与える影響の強さとテーマを視覚化します。</p>
+            <p class="text-xs text-slate-500 mb-3 shrink-0">今月から1年半（18ヶ月間）の運勢と具体的なアドバイスです。下のカードを横にスワイプしてください。</p>
             
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-4">
-                <canvas id="timelineChart" height="200"></canvas>
+            <!-- チャートの高さを抑えてカードの視認性を向上 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 mb-3 shrink-0">
+                <canvas id="timelineChart" height="80" style="max-height: 120px;"></canvas>
             </div>
             
-            <div id="timeline-details" class="space-y-4">
-                <!-- タイムライン詳細カードがここに挿入される -->
-                <div class="text-center text-slate-400 py-6">
-                    <p>予測を開始すると、月ごとの詳細な解説が表示されます。</p>
+            <div id="timeline-details" class="timeline-carousel flex-1">
+                <div class="text-center text-slate-400 py-6 w-full flex justify-center items-center h-full">
+                    <p class="text-sm">予測を開始すると、月ごとの詳細なアドバイスが表示されます。</p>
                 </div>
             </div>
         </div>
 
-        <!-- タブ: チャット (独立したペイン画面として機能) -->
+        <!-- チャット -->
         <div id="tab-chat" class="tab-content flex-col h-full max-w-2xl mx-auto">
             <div class="px-4 py-3 bg-white border-b border-slate-100 shrink-0">
                 <h2 class="text-lg font-bold text-slate-700"><i class="fa-regular fa-comments mr-2"></i>星占い師AIチャット</h2>
                 <p class="text-xs text-slate-500">あなたのホロスコープ情報を記憶しています。なんでも聞いてください。</p>
             </div>
             <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 pb-4">
-                <!-- 初期メッセージ -->
                 <div class="flex justify-start">
                     <div class="chat-ai px-4 py-3 max-w-[85%] text-sm leading-relaxed">
                         こんにちは！あなたのホロスコープデータに基づき、さらに詳しい自己分析や、特定の悩みについてアドバイスします。何について知りたいですか？
@@ -200,7 +260,7 @@
             </div>
         </div>
 
-        <!-- タブ: 設定 -->
+        <!-- 設定 -->
         <div id="tab-settings" class="tab-content p-4 max-w-lg mx-auto">
             <h2 class="text-lg font-bold mb-4 text-slate-700"><i class="fa-solid fa-gear mr-2"></i>設定・データ管理</h2>
             
@@ -208,7 +268,6 @@
                 <h3 class="font-bold text-slate-700 mb-2 border-b pb-2">API設定 (Gemini 2.5 Flash)</h3>
                 <p class="text-xs text-slate-500 mb-3">Google AI Studioで取得したAPIキーを入力してください。キーはブラウザ内にのみ安全に保存されます。</p>
                 
-                <!-- APIキー保存済みステータス -->
                 <div id="api-key-status" class="hidden flex items-center gap-2 mb-3 text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg text-sm font-medium border border-emerald-200">
                     <i class="fa-solid fa-lock"></i> APIキーは安全に保存されています
                 </div>
@@ -236,62 +295,31 @@
                 </button>
             </div>
         </div>
-
     </main>
 
-    <!-- ボトムナビゲーション -->
     <nav class="glass-nav absolute bottom-0 w-full z-20 pb-safe">
-        <ul class="flex justify-around items-center h-16 px-2">
-            <li>
-                <button onclick="app.ui.switchTab('profile')" class="nav-btn active-nav w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
-                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
-                        <i class="fa-solid fa-user text-lg"></i>
-                    </div>
-                    <span class="text-[10px] font-medium mt-1">プロフ</span>
-                </button>
-            </li>
-            <li>
-                <button onclick="app.ui.switchTab('analysis')" class="nav-btn w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
-                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
-                        <i class="fa-solid fa-star text-lg"></i>
-                    </div>
-                    <span class="text-[10px] font-medium mt-1">自己分析</span>
-                </button>
-            </li>
-            <li>
-                <button onclick="app.ui.switchTab('timeline')" class="nav-btn w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
-                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
-                        <i class="fa-solid fa-chart-line text-lg"></i>
-                    </div>
-                    <span class="text-[10px] font-medium mt-1">タイムライン</span>
-                </button>
-            </li>
-            <li>
-                <button onclick="app.ui.switchTab('chat')" class="nav-btn w-16 h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group">
-                    <div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors duration-300">
-                        <i class="fa-solid fa-message text-lg"></i>
-                    </div>
-                    <span class="text-[10px] font-medium mt-1">AIチャット</span>
-                </button>
-            </li>
+        <ul class="flex justify-between items-center h-16 px-1">
+            <li class="flex-1"><button onclick="app.ui.switchTab('profile')" class="nav-btn active-nav w-full h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group"><div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors"><i class="fa-solid fa-user text-lg"></i></div><span class="text-[10px] font-medium mt-1">プロフ</span></button></li>
+            <li class="flex-1"><button onclick="app.ui.switchTab('analysis')" class="nav-btn w-full h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group"><div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors"><i class="fa-solid fa-star text-lg"></i></div><span class="text-[10px] font-medium mt-1">分析</span></button></li>
+            <li class="flex-1"><button onclick="app.ui.switchTab('horoscope')" class="nav-btn w-full h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group"><div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors"><i class="fa-solid fa-meteor text-lg"></i></div><span class="text-[10px] font-medium mt-1">トランジット</span></button></li>
+            <li class="flex-1"><button onclick="app.ui.switchTab('timeline')" class="nav-btn w-full h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group"><div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors"><i class="fa-solid fa-chart-line text-lg"></i></div><span class="text-[10px] font-medium mt-1">未来予測</span></button></li>
+            <li class="flex-1"><button onclick="app.ui.switchTab('chat')" class="nav-btn w-full h-full flex flex-col items-center justify-center text-slate-400 hover:text-astro transition group"><div class="p-1 rounded-full group-[.active-nav]:bg-astro-light group-[.active-nav]:text-astro transition-colors"><i class="fa-solid fa-message text-lg"></i></div><span class="text-[10px] font-medium mt-1">チャット</span></button></li>
         </ul>
     </nav>
 
-    <!-- 生成中オーバーレイ -->
     <div id="loading-overlay" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex flex-col justify-center items-center">
         <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center max-w-xs w-full text-center">
             <div class="text-4xl text-astro mb-4 animate-spin"><i class="fa-solid fa-compass"></i></div>
             <h3 class="font-bold text-slate-800 mb-2">星々を読み解いています...</h3>
-            <p class="text-xs text-slate-500 mb-4">複雑なホロスコープをAIが分析中です。<br>画面を閉じても裏で処理が継続されます。</p>
+            <p class="text-xs text-slate-500 mb-4" id="loading-text">複雑なホロスコープをAIが分析中です。<br>画面を閉じても裏で処理が継続されます。</p>
             <div class="dot-flashing mb-2"></div>
         </div>
     </div>
 
-    <!-- JavaScript ロジック -->
     <script>
-        // --- 1. Service Worker & PWA ---
+        // --- Service Worker & PWA ---
         const swCode = `
-        const CACHE_NAME = 'astro-v1';
+        const CACHE_NAME = 'astro-v1.4';
         self.addEventListener('install', e => self.skipWaiting());
         self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
         self.addEventListener('fetch', e => {
@@ -304,25 +332,13 @@
             navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(console.error);
         }
 
-        const manifest = {
-            name: "AstroInsight",
-            short_name: "Astro",
-            display: "standalone",
-            background_color: "#f8fafc",
-            theme_color: "#4f46e5",
-            icons: [{"src": "data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%234f46e5'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>✦</text></svg>", "sizes": "192x192", "type": "image/svg+xml"}]
-        };
-        const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
-        document.head.insertAdjacentHTML('beforeend', `<link rel="manifest" href="${URL.createObjectURL(manifestBlob)}">`);
-
-        // --- 2. Web Worker (AI通信用・非同期実行) ---
+        // --- Web Worker ---
         const workerCode = `
         self.onmessage = async function(e) {
             const { action, apiKey, prompt, isJson } = e.data;
             if (action !== 'generate') return;
-            
             try {
-                const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=' + apiKey;
+                const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=' + apiKey;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -330,48 +346,47 @@
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error?.message || 'API Request Failed');
+                    const err = await response.json().catch(()=>({}));
+                    throw new Error(err.error?.message || 'API Request Failed (' + response.status + ')');
                 }
 
                 const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let fullText = '';
+                const decoder = new TextDecoder('utf-8');
+                let fullText = ''; let buffer = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split(/\\r?\\n/);
+                    buffer = lines.pop(); 
                     
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\\n');
                     for(let line of lines) {
+                        line = line.trim();
                         if(line.startsWith('data: ')) {
+                           const dataStr = line.substring(6).trim();
+                           if(dataStr === '[DONE]') continue;
                            try {
-                               const data = JSON.parse(line.substring(6));
-                               if(data.candidates && data.candidates[0].content.parts[0].text) {
-                                   const text = data.candidates[0].content.parts[0].text;
-                                   fullText += text;
+                               const data = JSON.parse(dataStr);
+                               if(data.candidates && data.candidates[0].content?.parts[0].text) {
+                                   fullText += data.candidates[0].content.parts[0].text;
                                    if(!isJson) self.postMessage({ type: 'chunk', text: fullText });
                                }
-                           } catch(err) {} 
+                           } catch(err) { console.warn('Stream parse error:', err); } 
                         }
                     }
-                    try{
-                        const parsed = JSON.parse(chunk);
-                        if(Array.isArray(parsed)) {
-                            parsed.forEach(p => {
-                                if(p.candidates && p.candidates[0].content.parts[0].text) {
-                                    const t = p.candidates[0].content.parts[0].text;
-                                    fullText += t;
-                                    if(!isJson) self.postMessage({ type: 'chunk', text: fullText });
-                                }
-                            });
-                        }
-                    } catch(e){}
                 }
-                
+                if(buffer.trim().startsWith('data: ')) {
+                    const dataStr = buffer.trim().substring(6).trim();
+                    if(dataStr !== '[DONE]') {
+                        try {
+                            const data = JSON.parse(dataStr);
+                            if(data.candidates && data.candidates[0].content?.parts[0].text) fullText += data.candidates[0].content.parts[0].text;
+                        } catch(e) {}
+                    }
+                }
+                if(!fullText) throw new Error("AIからの応答データが空でした。");
                 self.postMessage({ type: 'done', text: fullText });
-
             } catch (error) {
                 self.postMessage({ type: 'error', message: error.message });
             }
@@ -379,17 +394,13 @@
         `;
         const workerBlob = new Blob([workerCode], {type: 'application/javascript'});
 
-        // --- 3. アプリケーションロジック ---
+        // --- App Logic ---
         class AstroApp {
             constructor() {
-                this.dbName = 'AstroInsightDB';
-                this.dbVersion = 1;
-                this.db = null;
+                this.dbName = 'AstroInsightDB'; this.dbVersion = 1; this.db = null;
                 this.worker = new Worker(URL.createObjectURL(workerBlob));
-                this.wakeLock = null;
-                this.chartInstance = null;
-                this.isGenerating = false;
-                
+                this.wakeLock = null; this.chartInstance = null; this.isGenerating = false; this.lastSave = 0;
+                this.horoscopeHistory = [];
                 this.setupWorkerListeners();
                 this.ui = new UIController(this);
                 this.init();
@@ -400,19 +411,16 @@
                 await this.loadSettings();
                 await this.loadProfile();
                 await this.loadAnalysis();
+                await this.loadHoroscope();
                 await this.loadTimeline();
                 await this.loadChat();
                 this.ui.setupEventListeners();
                 this.checkResumeState();
                 
-                // オートセーブ設定
                 const inputs = ['profile-name', 'profile-date', 'profile-time', 'profile-place'];
-                inputs.forEach(id => {
-                    document.getElementById(id).addEventListener('input', this.debounce(() => this.saveProfile(true), 1000));
-                });
+                inputs.forEach(id => document.getElementById(id).addEventListener('input', this.debounce(() => this.saveProfile(true), 1000)));
             }
 
-            // --- Database Management ---
             initDB() {
                 return new Promise((resolve, reject) => {
                     const request = indexedDB.open(this.dbName, this.dbVersion);
@@ -428,7 +436,7 @@
 
             async getDB(key) {
                 if (!this.db) await this.initDB();
-                return new Promise((resolve) => {
+                return new Promise(resolve => {
                     const tx = this.db.transaction('store', 'readonly');
                     const req = tx.objectStore('store').get(key);
                     req.onsuccess = () => resolve(req.result);
@@ -450,55 +458,34 @@
                 const data = await this.exportDataJSON();
                 const tx = this.db.transaction('backups', 'readwrite');
                 const store = tx.objectStore('backups');
-                const timestamp = Date.now();
-                store.put(data, timestamp);
-                
+                store.put(data, Date.now());
                 const req = store.getAllKeys();
                 req.onsuccess = () => {
                     const keys = req.result.sort((a,b) => a - b);
                     if (keys.length > 5) {
-                        for(let i=0; i < keys.length - 5; i++) {
-                            store.delete(keys[i]);
-                        }
+                        for(let i=0; i < keys.length - 5; i++) store.delete(keys[i]);
                     }
                 };
             }
 
-            // --- Data Load/Save ---
             async loadSettings() {
                 const apiKey = await this.getDB('api_key');
-                const statusEl = document.getElementById('api-key-status');
-                const inputEl = document.getElementById('api-key-input');
-                
                 if(apiKey) {
-                    statusEl.classList.remove('hidden');
-                    inputEl.value = '';
-                    inputEl.placeholder = '•••••••••••••••• (保存済み)';
-                } else {
-                    statusEl.classList.add('hidden');
-                    inputEl.placeholder = 'APIキーを入力（または更新）...';
+                    document.getElementById('api-key-status').classList.remove('hidden');
+                    document.getElementById('api-key-input').placeholder = '•••••••••••••••• (保存済み)';
                 }
             }
 
             async saveApiKey() {
-                const inputEl = document.getElementById('api-key-input');
-                const key = inputEl.value.trim();
-                
+                const key = document.getElementById('api-key-input').value.trim();
                 if(!key) return alert('APIキーを入力してください。');
-                
                 try {
                     await this.setDB('api_key', key);
-                    
-                    const statusEl = document.getElementById('api-key-status');
-                    statusEl.classList.remove('hidden');
-                    inputEl.value = '';
-                    inputEl.placeholder = '•••••••••••••••• (保存済み)';
-                    
-                    alert('APIキーを安全に保存しました。');
-                } catch(error) {
-                    console.error('API Key Save Error:', error);
-                    alert('APIキーの保存に失敗しました: ' + error.message);
-                }
+                    document.getElementById('api-key-status').classList.remove('hidden');
+                    document.getElementById('api-key-input').value = '';
+                    document.getElementById('api-key-input').placeholder = '•••••••••••••••• (保存済み)';
+                    alert('保存しました。');
+                } catch(e) { alert('保存失敗: ' + e.message); }
             }
 
             async loadProfile() {
@@ -518,14 +505,9 @@
                     time: document.getElementById('profile-time').value,
                     place: document.getElementById('profile-place').value.trim()
                 };
-                if(!silent && (!p.name || !p.date || !p.place)) {
-                    return alert('名前、生年月日、出生地は必須です。');
-                }
+                if(!silent && (!p.name || !p.date || !p.place)) return alert('必須項目を入力してください。');
                 await this.setDB('profile', p);
-                if(!silent) {
-                    await this.autoBackup();
-                    this.ui.switchTab('analysis');
-                }
+                if(!silent) { await this.autoBackup(); this.ui.switchTab('analysis'); }
             }
 
             getProfileString() {
@@ -539,22 +521,13 @@
                 return `名前: ${p.name}, 生年月日: ${p.date}, 出生時間: ${p.time || '不明'}, 出生地: ${p.place}`;
             }
 
-            // --- AI Generation Logic ---
             async requestWakeLock() {
                 if ('wakeLock' in navigator) {
-                    try {
-                        this.wakeLock = await navigator.wakeLock.request('screen');
-                        document.getElementById('wake-lock-status').classList.remove('hidden');
-                    } catch (err) { console.error('WakeLock Error:', err); }
+                    try { this.wakeLock = await navigator.wakeLock.request('screen'); document.getElementById('wake-lock-status').classList.remove('hidden'); } catch (e) {}
                 }
             }
             releaseWakeLock() {
-                if (this.wakeLock) {
-                    this.wakeLock.release().then(() => {
-                        this.wakeLock = null;
-                        document.getElementById('wake-lock-status').classList.add('hidden');
-                    });
-                }
+                if (this.wakeLock) { this.wakeLock.release().then(() => { this.wakeLock = null; document.getElementById('wake-lock-status').classList.add('hidden'); }); }
             }
 
             setupWorkerListeners() {
@@ -562,9 +535,11 @@
                     const data = e.data;
                     if(data.type === 'chunk') {
                         if(this.currentTask === 'analysis') {
-                            const resDiv = document.getElementById('analysis-result');
-                            resDiv.innerHTML = marked.parse(data.text);
-                            await this.setDB('resume_state', { task: 'analysis', text: data.text });
+                            document.getElementById('analysis-result').innerHTML = marked.parse(data.text) + '<span class="text-astro animate-pulse"> ▍</span>';
+                            if(!this.lastSave || Date.now() - this.lastSave > 1500) { await this.setDB('resume_state', { task: 'analysis', text: data.text }); this.lastSave = Date.now(); }
+                        } else if (this.currentTask === 'horoscope') {
+                            // ホロスコープもリアルタイムに表示
+                            document.getElementById('horoscope-result').innerHTML = marked.parse(data.text) + '<span class="text-astro animate-pulse"> ▍</span>';
                         }
                     } else if (data.type === 'done') {
                         this.finishGeneration(data.text);
@@ -576,29 +551,16 @@
 
             async startGeneration(task, prompt, isJson = false) {
                 const apiKey = await this.getDB('api_key');
-                if(!apiKey) {
-                    alert('設定タブからGemini APIキーを設定してください。');
-                    this.ui.switchTab('settings');
-                    return;
-                }
-                
-                this.isGenerating = true;
-                this.currentTask = task;
-                this.currentPrompt = prompt;
-                this.isJsonTask = isJson;
-                
+                if(!apiKey) { alert('設定タブからAPIキーを設定してください。'); this.ui.switchTab('settings'); return; }
+                this.isGenerating = true; this.currentTask = task; this.lastSave = 0;
                 await this.requestWakeLock();
                 document.getElementById('loading-overlay').classList.remove('hidden');
-                
                 await this.setDB('resume_state', { task: task, text: '', prompt: prompt, isJson: isJson });
                 this.worker.postMessage({ action: 'generate', apiKey, prompt, isJson });
             }
 
             async finishGeneration(finalText) {
-                this.isGenerating = false;
-                document.getElementById('loading-overlay').classList.add('hidden');
-                this.releaseWakeLock();
-                
+                this.isGenerating = false; document.getElementById('loading-overlay').classList.add('hidden'); this.releaseWakeLock();
                 try {
                     if (this.currentTask === 'analysis') {
                         document.getElementById('analysis-result').innerHTML = marked.parse(finalText);
@@ -607,92 +569,121 @@
                         await this.addChatMessage('model', finalText);
                     } else if (this.currentTask === 'timeline') {
                         await this.processTimelineResult(finalText);
+                    } else if (this.currentTask === 'horoscope') {
+                        let history = await this.getDB('horoscope_history') || [];
+                        const timestamp = Date.now();
+                        history.unshift({ id: timestamp, date: document.getElementById('horoscope-date').value, time: document.getElementById('horoscope-time').value, text: finalText });
+                        await this.setDB('horoscope_history', history);
+                        this.horoscopeHistory = history;
+                        this.ui.renderHoroscopeHistory(history);
+                        this.ui.selectHoroscopeHistory(timestamp); // 最新を表示
                     }
-                    
-                    await this.setDB('resume_state', null);
-                    await this.autoBackup();
-                    
-                } catch(e) {
-                    this.handleError(e.message);
-                }
+                    await this.setDB('resume_state', null); await this.autoBackup();
+                } catch(e) { this.handleError(e.message); }
             }
 
             handleError(msg) {
-                this.isGenerating = false;
-                document.getElementById('loading-overlay').classList.add('hidden');
-                this.releaseWakeLock();
-                alert('AI生成エラー: ' + msg);
+                this.isGenerating = false; document.getElementById('loading-overlay').classList.add('hidden'); this.releaseWakeLock();
+                alert('処理に問題が発生しました。\n(AIの応答フォーマットの乱れ、または通信エラーの可能性があります)\n\n詳細: ' + msg);
             }
 
             async checkResumeState() {
                 const state = await this.getDB('resume_state');
-                if(state && state.text && state.task === 'analysis') {
-                    document.getElementById('resume-notice').classList.remove('hidden');
-                }
+                if(state && state.text && state.task === 'analysis') document.getElementById('resume-notice').classList.remove('hidden');
             }
-
             async resumeGeneration() {
                 const state = await this.getDB('resume_state');
                 if(state) {
                     document.getElementById('resume-notice').classList.add('hidden');
-                    if(state.task === 'analysis') {
-                        document.getElementById('analysis-result').innerHTML = marked.parse(state.text) + "\n\n*(中断されました。完全に取得するには再生成してください)*";
-                        this.ui.switchTab('analysis');
-                    }
+                    if(state.task === 'analysis') { document.getElementById('analysis-result').innerHTML = marked.parse(state.text) + "\n\n*(中断されました)*"; this.ui.switchTab('analysis'); }
                 }
             }
 
-            // --- Features ---
             async loadAnalysis() {
                 const res = await this.getDB('analysis_result');
-                if(res) {
-                    document.getElementById('analysis-result').innerHTML = marked.parse(res);
-                }
+                if(res) document.getElementById('analysis-result').innerHTML = marked.parse(res);
             }
 
             async generateAnalysis() {
                 const profileStr = this.getProfileString();
                 if(!profileStr) return alert('プロフィールを正しく入力してください。');
-                
-                const prompt = `あなたは世界トップクラスの占星術師です。以下のクライアントのプロフィール情報から、主要な天体配置（太陽、月、水星、金星、火星などのサイン、ハウス、主要アスペクト）を推測・計算し、個人の「強み」「課題」「潜在能力」に焦点を当てた深く洞察に満ちた自己分析を行ってください。専門用語は控えめに、温かく励ますようなトーンでマークダウン形式で出力してください。\nプロフィール: ${profileStr}`;
-                
+                const prompt = `あなたは親友のように親しみやすく、超ポジティブでポップな言葉遣いをする占星術師です。以下のクライアントのプロフィールから、自己分析を行ってください。
+専門用語は極力避け、絵文字を爆盛りにして、まるで大親友からの熱いエールのような、読んだ人が絶対的に自己肯定感を爆上げできるトーンにしてください！
+個人の「最強の強み」「隠れた魅力」「輝く才能」に焦点を当ててください。
+【重要】指定したMarkdown形式を厳守し、確実にテキストを出力してください。
+プロフィール: ${profileStr}`;
                 document.getElementById('analysis-result').innerHTML = '';
                 this.startGeneration('analysis', prompt, false);
+            }
+
+            async loadHoroscope() {
+                const history = await this.getDB('horoscope_history') || [];
+                this.horoscopeHistory = history;
+                this.ui.renderHoroscopeHistory(history);
+                if(history.length > 0) this.ui.selectHoroscopeHistory(history[0].id);
+            }
+
+            async generateHoroscope() {
+                const date = document.getElementById('horoscope-date').value;
+                const time = document.getElementById('horoscope-time').value;
+                const profileStr = this.getProfileString();
+                
+                if(!profileStr) return alert('先にプロフィール(ネイタル情報)を設定してください。');
+                if(!date) return alert('見たい年月日を指定してください。');
+
+                // アコーディオンを閉じる
+                document.getElementById('horoscope-details').removeAttribute('open');
+
+                const prompt = `あなたは深い知識を持つ本格的な占星術師です。クライアントの出生情報（ネイタル）に対し、以下の指定日時（トランジット）の星の配置がどのような影響を与えるかを分析してください。
+トーンはポップすぎず、専門家としての落ち着きと深みを持たせつつ、分かりやすい言葉で解説してください。
+
+【必須要件】
+1. 本格的なホロスコープ図の代わりとなるよう、ネイタルの主要天体とトランジットの主要天体の絡み（サイン、ハウス、アスペクト）を、Markdownの表形式で詳細かつ視覚的に分かりやすく提示してください。
+2. その星の配置がクライアントの感情、行動、運勢にどう影響するかを解説してください。
+3. この時期をどう受け止め、どう過ごすべきか、具体的なアドバイスを記述してください。
+
+出生情報（ネイタル）: ${profileStr}
+指定日時（トランジット）: ${date} ${time || '時間不明'}`;
+                
+                document.getElementById('horoscope-result').innerHTML = '';
+                this.startGeneration('horoscope', prompt, false);
             }
 
             async generateTimeline() {
                 const profileStr = this.getProfileString();
                 if(!profileStr) return alert('プロフィールを正しく入力してください。');
-                
-                const prompt = `占星術師として、以下のプロフィールを持つ人物の【今後1年間（来月から12ヶ月間）】のトランジット（現在の星の運行）による影響を分析してください。
-                出力は必ず以下のJSON配列形式のみとしてください（マークダウンブロックやその他のテキストは一切含めないでください）。
-                
-                フォーマット:
-                [
-                  {
-                    "month": "2024-05", // 例: YYYY-MM形式
-                    "impact": 80, // 影響度 0〜100 の数値
-                    "theme": "キャリアと転機", // その月の主要テーマ（短く）
-                    "description": "木星が天頂を通過し..." // 詳細な解説（2-3文程度）
-                  }, ... (12ヶ月分)
-                ]
-                
-                プロフィール: ${profileStr}`;
-                
+                const d = new Date();
+                const currentMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+                const prompt = `占星術師として、以下のプロフィールを持つ人物の【今月（${currentMonthStr}）から1年半（18ヶ月間）】のトランジットによる影響を分析してください。
+専門用語は極力避け、未来に向かってどう行動すればいいか、どう受け止めればいいかという【具体的でポジティブなアドバイス】を必ず含めてください。
+【重要】出力は必ず以下のJSON配列形式のみとしてください。Markdown修飾(\`\`\`jsonなど)は不要です。直接 [ で開始し ] で終了してください。
+
+フォーマット:
+[
+  {
+    "month": "2024-05", // YYYY-MM形式 (今月から18ヶ月分連続)
+    "impact": 80, // 影響度 0〜100 の数値
+    "theme": "キャリアと転機", // その月の主要テーマ（短く）
+    "description": "仕事で新しいチャンスが舞い込みそうです。この時期のテーマや影響をどう受け止め、どう活かせば良いか、具体的なアドバイスや前向きな行動提案。（3〜4文程度）"
+  }, ... (18ヶ月分必ず出力)
+]
+プロフィール: ${profileStr}`;
                 this.startGeneration('timeline', prompt, true);
             }
 
             async processTimelineResult(text) {
                 try {
-                    const jsonMatch = text.match(/\[[\s\S]*\]/);
-                    if(!jsonMatch) throw new Error("JSONデータの抽出に失敗しました。");
+                    let cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const startIndex = cleanText.indexOf('['); const endIndex = cleanText.lastIndexOf(']');
+                    if (startIndex !== -1 && endIndex !== -1) cleanText = cleanText.substring(startIndex, endIndex + 1);
+                    else throw new Error("JSON配列が見つかりません。");
                     
-                    const data = JSON.parse(jsonMatch[0]);
+                    const data = JSON.parse(cleanText);
+                    if (!Array.isArray(data) || data.length === 0) throw new Error("不正なデータ形式です。");
                     await this.setDB('timeline_data', data);
                     this.renderTimeline(data);
-                } catch(e) {
-                    this.handleError('時系列データの解析に失敗しました: ' + e.message);
-                }
+                } catch(e) { this.handleError('データの解析に失敗しました。AIの出力形式の乱れが原因です。再度お試しください。\n' + e.message); }
             }
 
             async loadTimeline() {
@@ -703,55 +694,66 @@
             renderTimeline(data) {
                 const labels = data.map(d => d.month);
                 const impacts = data.map(d => d.impact);
-                
                 const ctx = document.getElementById('timelineChart').getContext('2d');
                 if(this.chartInstance) this.chartInstance.destroy();
                 
+                const pointBgColors = new Array(data.length).fill('#fff');
+                const pointRadii = new Array(data.length).fill(4);
+                pointBgColors[0] = '#4f46e5'; pointRadii[0] = 8;
+
                 this.chartInstance = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: '星の影響度 (雨雲レーダー)',
-                            data: impacts,
-                            borderColor: '#4f46e5',
-                            backgroundColor: 'rgba(79, 70, 229, 0.2)',
-                            tension: 0.4,
-                            fill: true,
-                            pointBackgroundColor: '#fff',
-                            pointBorderColor: '#4f46e5',
-                            pointBorderWidth: 2,
-                            pointRadius: 4
+                            label: '星の影響度', data: impacts,
+                            borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                            tension: 0.4, fill: true,
+                            pointBackgroundColor: pointBgColors, pointBorderColor: '#4f46e5',
+                            pointBorderWidth: 2, pointRadius: pointRadii, pointHoverRadius: 8
                         }]
                     },
                     options: {
-                        responsive: true,
-                        scales: { y: { min: 0, max: 100 } },
-                        plugins: { legend: { display: false } }
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { min: 0, max: 100 }, x: { ticks: { maxTicksLimit: 6 } } },
+                        plugins: { legend: { display: false } },
+                        animation: { duration: 500 }
                     }
                 });
 
                 const detailsContainer = document.getElementById('timeline-details');
                 detailsContainer.innerHTML = '';
-                data.forEach(item => {
+                data.forEach((item, index) => {
                     const card = document.createElement('div');
-                    card.className = 'bg-white rounded-xl shadow-sm border border-slate-100 p-4 border-l-4 border-l-astro fade-in';
+                    card.className = 'timeline-card bg-white rounded-xl shadow-sm border border-slate-100 p-5 border-t-4 border-t-astro h-full flex flex-col';
                     card.innerHTML = `
-                        <div class="flex justify-between items-center mb-2">
-                            <h4 class="font-bold text-slate-700">${item.month} <span class="text-sm font-normal text-slate-500 ml-2">${item.theme}</span></h4>
-                            <span class="text-xs font-bold px-2 py-1 rounded bg-astro-light text-astro">影響度: ${item.impact}</span>
+                        <div class="flex justify-between items-center mb-3 shrink-0">
+                            <h4 class="font-bold text-slate-800 text-lg">${item.month}</h4>
+                            <span class="text-xs font-bold px-3 py-1 rounded-full bg-astro-light text-astro border border-indigo-200">影響度: ${item.impact}</span>
                         </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">${item.description}</p>
+                        <h5 class="text-sm font-bold text-astro mb-2 shrink-0"><i class="fa-solid fa-star mr-1"></i>${item.theme}</h5>
+                        <div class="flex-1 overflow-y-auto pr-1">
+                            <p class="text-sm text-slate-600 leading-relaxed">${item.description}</p>
+                        </div>
                     `;
                     detailsContainer.appendChild(card);
                 });
+
+                // スクロール連動ハイライト
+                detailsContainer.onscroll = () => {
+                    if(!detailsContainer.children[0]) return;
+                    const cardWidth = detailsContainer.children[0].offsetWidth + 16;
+                    const activeIndex = Math.min(Math.max(Math.round(detailsContainer.scrollLeft / cardWidth), 0), data.length - 1);
+                    const chart = this.chartInstance;
+                    chart.data.datasets[0].pointBackgroundColor = data.map((_, i) => i === activeIndex ? '#4f46e5' : '#fff');
+                    chart.data.datasets[0].pointRadius = data.map((_, i) => i === activeIndex ? 8 : 4);
+                    chart.update('none');
+                };
             }
 
-            // --- Chat Logic ---
             async loadChat() {
                 const chats = await this.getDB('chat_history') || [];
                 const container = document.getElementById('chat-messages');
-                
                 if(chats.length > 0) {
                     container.innerHTML = '';
                     chats.forEach(c => this.ui.appendChatBubble(c.role, c.text));
@@ -764,30 +766,17 @@
                 const input = document.getElementById('chat-input');
                 const text = input.value.trim();
                 if(!text) return;
-                
                 input.value = '';
                 await this.addChatMessage('user', text);
-                
                 const profileStr = this.getProfileString() || '未設定';
                 const analysisStr = await this.getDB('analysis_result') || 'まだ分析されていません。';
                 let chats = await this.getDB('chat_history') || [];
                 const recentChats = chats.slice(-10).map(c => `${c.role === 'user' ? 'ユーザー' : 'AI'}: ${c.text}`).join('\n');
 
-                const prompt = `あなたはプロの占星術師AIです。クライアントからチャットで質問が来ました。
-                以下のプロフィールと過去の分析結果、これまでの会話履歴を踏まえ、親身に、かつ占星術の知識を用いて的確に回答してください。回答はチャットに適した簡潔な長さ（300文字以内）で出力してください。
-                
-                【プロフィール】
-                ${profileStr}
-                
-                【自己分析ベース】
-                ${analysisStr.substring(0, 500)}...
-                
-                【会話履歴】
-                ${recentChats}
-                
-                ユーザーの最新の質問: ${text}
-                AIの回答:`;
-                
+                const prompt = `あなたは親しみやすくポップな占星術師AIです。クライアントからチャットで質問が来ました。
+                以下のプロフィールと過去の分析結果を踏まえ、親身に的確に回答してください。専門用語は避け、絵文字を使って明るく簡潔（300文字以内）に答えてください。
+                【プロフィール】${profileStr}\n【自己分析ベース】${analysisStr.substring(0, 300)}...\n【会話履歴】${recentChats}
+                ユーザーの最新の質問: ${text}\nAIの回答:`;
                 this.startGeneration('chat', prompt, false);
             }
 
@@ -798,126 +787,95 @@
                 this.ui.appendChatBubble(role, text);
             }
 
-            // --- Data Export/Import ---
             async exportDataJSON() {
-                const keys = ['api_key', 'profile', 'analysis_result', 'timeline_data', 'chat_history'];
-                const data = {};
-                for(let k of keys) {
-                    data[k] = await this.getDB(k);
-                }
+                const keys = ['api_key', 'profile', 'analysis_result', 'timeline_data', 'chat_history', 'horoscope_history'];
+                const data = {}; for(let k of keys) data[k] = await this.getDB(k);
                 return data;
             }
-
             async exportData() {
                 const data = await this.exportDataJSON();
-                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-                const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = `astro_backup_${new Date().toISOString().slice(0,10)}.json`;
-                a.click();
+                a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
+                a.download = `astro_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
             }
-
             importData(e) {
-                const file = e.target.files[0];
-                if(!file) return;
+                const file = e.target.files[0]; if(!file) return;
                 const reader = new FileReader();
                 reader.onload = async (event) => {
                     try {
                         const data = JSON.parse(event.target.result);
-                        for(let k in data) {
-                            await this.setDB(k, data[k]);
-                        }
-                        alert('データを復元しました。アプリを再読み込みします。');
-                        location.reload();
-                    } catch(err) {
-                        alert('ファイルの読み込みに失敗しました。');
-                    }
+                        for(let k in data) await this.setDB(k, data[k]);
+                        alert('データを復元しました。再読み込みします。'); location.reload();
+                    } catch(err) { alert('ファイルの読み込みに失敗しました。'); }
                 };
                 reader.readAsText(file);
             }
-
             async restoreFromBackup() {
                 const tx = this.db.transaction('backups', 'readonly');
-                const store = tx.objectStore('backups');
-                const req = store.getAll();
+                const req = tx.objectStore('backups').getAll();
                 req.onsuccess = async () => {
                     const backups = req.result;
                     if(backups.length === 0) return alert('バックアップがありません。');
                     const latest = backups[backups.length - 1];
-                    for(let k in latest) {
-                        await this.setDB(k, latest[k]);
-                    }
-                    alert('直近のバックアップから復元しました。再読み込みします。');
-                    location.reload();
+                    for(let k in latest) await this.setDB(k, latest[k]);
+                    alert('直近のバックアップから復元しました。再読み込みします。'); location.reload();
                 };
             }
-
             async clearAllData() {
-                if(!confirm('すべてのデータを消去しますか？この操作は元に戻せません。')) return;
+                if(!confirm('すべてのデータを消去しますか？')) return;
                 const tx = this.db.transaction(['store', 'backups'], 'readwrite');
-                tx.objectStore('store').clear();
-                tx.objectStore('backups').clear();
-                tx.oncomplete = () => {
-                    alert('初期化しました。');
-                    location.reload();
-                };
+                tx.objectStore('store').clear(); tx.objectStore('backups').clear();
+                tx.oncomplete = () => { alert('初期化しました。'); location.reload(); };
             }
 
-            // Utils
             debounce(func, wait) {
                 let timeout;
-                return function(...args) {
-                    clearTimeout(timeout);
-                    timeout = setTimeout(() => func.apply(this, args), wait);
-                };
+                return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); };
             }
         }
 
-        // --- UI Controller ---
         class UIController {
-            constructor(app) {
-                this.app = app;
-            }
-
+            constructor(app) { this.app = app; }
             setupEventListeners() {
                 document.getElementById('chat-form').addEventListener('submit', (e) => this.app.handleChatSubmit(e));
             }
-
             switchTab(tabId) {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
                 document.getElementById(`tab-${tabId}`).classList.add('active');
-                
                 document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active-nav'));
-                const tabMap = { 'profile': 0, 'analysis': 1, 'timeline': 2, 'chat': 3 };
-                if(tabMap[tabId] !== undefined) {
-                    document.querySelectorAll('.nav-btn')[tabMap[tabId]].classList.add('active-nav');
-                }
+                const tabMap = { 'profile': 0, 'analysis': 1, 'horoscope': 2, 'timeline': 3, 'chat': 4 };
+                if(tabMap[tabId] !== undefined) document.querySelectorAll('.nav-btn')[tabMap[tabId]].classList.add('active-nav');
             }
-
             appendChatBubble(role, text) {
                 const container = document.getElementById('chat-messages');
                 const div = document.createElement('div');
                 div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} fade-in`;
-                
                 const bubble = document.createElement('div');
                 bubble.className = `px-4 py-3 max-w-[85%] text-sm leading-relaxed ${role === 'user' ? 'chat-user' : 'chat-ai'}`;
-                
-                if (role === 'model') {
-                    bubble.innerHTML = marked.parse(text);
-                } else {
-                    bubble.textContent = text;
+                if (role === 'model') bubble.innerHTML = marked.parse(text); else bubble.textContent = text;
+                div.appendChild(bubble); container.appendChild(div); container.scrollTop = container.scrollHeight;
+            }
+            renderHoroscopeHistory(history) {
+                const container = document.getElementById('horoscope-history-container');
+                const select = document.getElementById('horoscope-history-select');
+                if (!history || history.length === 0) {
+                    container.classList.add('hidden');
+                    return;
                 }
-
-                div.appendChild(bubble);
-                container.appendChild(div);
-                container.scrollTop = container.scrollHeight;
+                container.classList.remove('hidden');
+                select.innerHTML = history.map(item => `<option value="${item.id}">指定日: ${item.date} ${item.time || ''}</option>`).join('');
+            }
+            selectHoroscopeHistory(id) {
+                const history = this.app.horoscopeHistory || [];
+                const item = history.find(h => h.id == id);
+                if (item) {
+                    document.getElementById('horoscope-result').innerHTML = marked.parse(item.text);
+                    document.getElementById('horoscope-history-select').value = id;
+                }
             }
         }
 
-        // アプリ起動
         const app = new AstroApp();
-
     </script>
 </body>
 </html>
