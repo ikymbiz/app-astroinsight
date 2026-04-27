@@ -1,76 +1,143 @@
-提供された素晴らしいHTMLソースコードに基づき、開発者やユーザーにとって分かりやすく、かつプロジェクトの魅力が伝わる高品質な `README.md` を作成しました。
+# AstroInsight - コンポーネント分割版
 
-そのままコピー＆ペーストしてご利用いただけます。
+AI占星術＆自己分析モバイルWebアプリ（PWA）。
+既存の単一HTMLファイル実装をコンポーネントごとに分割し、AIモデル定義・システムプロンプトをJSONで管理できるようにリファクタリングしたものです。
+
+---
+
+## 1. 主な変更点
+
+### 1.1 AIモデル名の更新（2026年4月時点の最新へ）
+
+| 旧モデル | 新モデル | プロバイダー |
+|---|---|---|
+| `gemini-2.5-flash` | `gemini-2.5-flash`（変わらず・推奨） | Google |
+| `claude-3-haiku-20240307`（2026/4/19廃止） | `claude-haiku-4-5` | Anthropic |
+| `gpt-4o-mini`（レガシー） | `gpt-5.4-mini` | OpenAI |
+| `grok-beta`（レガシー） | `grok-4-1-fast-non-reasoning` | xAI |
+
+加えて、`claude-sonnet-4-6` / `claude-opus-4-7` / `gpt-5.5` / `grok-4.20` / `gemini-3-flash-preview` も選択肢として用意。
+
+### 1.2 コンポーネント分割
+
+```
+astro-insight/
+├── index.html                       # メインHTML（UI構造のみ・既存と同等）
+├── sw.js                            # Service Worker（PWA）
+├── css/
+│   └── styles.css                   # 既存のカスタムCSSを分離
+└── js/
+    ├── config/
+    │   ├── models.json              # ★ AIモデル定義（要件 §4）
+    │   └── prompts.json             # ★ 機能別システムプロンプト（要件 §6）
+    ├── workers/
+    │   └── ai-worker.js             # AI生成 Web Worker（SSEパース）
+    ├── core/
+    │   ├── db.js                    # IndexedDBラッパー（要件 §19）
+    │   ├── config-loader.js         # JSON読み込み＋ユーザー設定マージ
+    │   └── ai-worker-manager.js     # Worker通信管理
+    ├── components/
+    │   ├── ui-controller.js         # タブ切替・チャットバブル等
+    │   ├── profile.js               # プロフィール
+    │   ├── analysis.js              # 自己分析（中断/再開対応）
+    │   ├── today.js                 # 今日の星
+    │   ├── horoscope.js             # 詳細分析（履歴）
+    │   ├── timeline.js              # 予報（4粒度・チャート）
+    │   ├── chat.js                  # AIチャット
+    │   └── settings.js              # 設定（モデル・プロンプト・データ）
+    └── app.js                       # メインアプリ（コンポーネント統合）
+```
+
+### 1.3 システムプロンプトのJSON管理
+
+`js/config/prompts.json` で、要件 §6 で定義された機能ごとのシステムプロンプトを管理：
+
+| 機能キー | 対象 |
+|---|---|
+| `prompt_natal` | ネイタル分析 |
+| `prompt_today` | 今日・今週・今月のトランジット |
+| `prompt_forecast` | 予報（タイムライン） |
+| `prompt_compat` | 相性分析（将来用・スタブ） |
+| `prompt_chat` | チャット |
+| `prompt_detail` | 詳細画面のトランジット解説 |
+
+設定画面の「機能ごとのシステムプロンプト」エリアで、各機能のプロンプトを個別に編集できます（ユーザー設定が優先、空の場合はデフォルト）。
+
+### 1.4 既存機能の保持
+
+以下の既存機能はすべて保持しています：
+
+- プロフィール入力（自動保存・debounce）
+- 自己分析（中断・再開機能付き）
+- 今日・今週の星
+- 詳細分析（履歴管理）
+- 予報（月次/週次/日次/時間 の4粒度・Chart.jsグラフ・カードカルーセル）
+- AIチャット（履歴・Markdown表示）
+- 設定（AIモデル選択・APIキー・共通システムプロンプト）
+- データ管理（バックアップDL/復元/ローカルファイル保存/全削除）
+- Service Worker（PWA・オフラインキャッシュ）
+- Web Worker（マルチプロバイダーSSEストリーミング）
+- Wake Lock（生成中スリープ防止）
+- IndexedDB永続化
+
+加えて、要件定義書から以下も取り込みました：
+
+- カスタムモデルの追加・削除（設定画面）
+- デフォルトモデルの非表示切替
+- 機能ごとのシステムプロンプト個別編集
 
 ---
 
-# 🌙 AstroInsight - AI占星術＆自己分析
+## 2. 起動方法
 
-[![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=flat&logo=html5&logoColor=white)](#) [![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat&logo=tailwind-css&logoColor=white)](#) [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black)](#) [![IndexedDB](https://img.shields.io/badge/IndexedDB-Local_Storage-blue)](#)
+このアプリはローカルJSONファイル（`models.json` / `prompts.json`）をfetchで読み込むため、**HTTPサーバー経由での起動が必要**です（`file://` プロトコル直開きでは fetch がブロックされます）。
 
-**AstroInsight** は、最新の生成AI（Gemini, ChatGPT, Claude, Grok）を活用して、あなた専用のパーソナライズされた占星術による自己分析・運勢予測・チャットを提供するシングルページWebアプリケーションです。
+### Pythonで起動
 
-バックエンドサーバーを必要とせず、1つのHTMLファイルのみで動作し、すべてのデータはブラウザのローカル（IndexedDB）に安全に保存される**プライバシーファースト**な設計となっています。
+```bash
+cd astro-insight
+python3 -m http.server 8000
+# ブラウザで http://localhost:8000/ を開く
+```
 
-## ✨ 主な機能
+### Node.jsで起動
 
-- 🤖 **マルチAIモデル対応**: Gemini 2.5 Flash, Claude 3 Haiku, GPT-4o Mini, Grok 等、複数の最先端AIモデルを切り替えて使用可能。
-- ⚡ **リアルタイムストリーミング (SSE)**: Web Workerを利用したServer-Sent Eventsにより、AIの推論結果をタイピングエフェクトのようにリアルタイムで表示。
-- 🌌 **ディープな自己分析**: 生年月日、出生時間、出生地（ネイタル情報）を基に、AIがあなたの本質を深く分析。
-- 📊 **星の予報タイムライン**: 月次・週次・日次・時間ごとの星の影響（トランジット）をAIが予測し、**Chart.js**を用いた美しいグラフとカルーセルUIで可視化。
-- 🔮 **トランジット詳細分析**: 特定の日時を指定し、その時の星の配置があなたに与える影響をピンポイントで分析（履歴機能付き）。
-- 💬 **星占い師AIチャット**: プロフィールと自己分析の文脈を理解したAI占い師と、いつでもチャットで相談可能。
-- 🔒 **完全ローカル保存**: アカウント登録不要。データはすべてブラウザ（IndexedDB）に保存され、JSON形式でのエクスポート/インポートにも対応。
+```bash
+cd astro-insight
+npx serve -p 8000
+```
 
-## 🛠 技術スタック
+### VSCode
 
-- **フロントエンド**: HTML5, Vanilla JavaScript, CSS3
-- **スタイリング**: Tailwind CSS (CDN)
-- **ライブラリ**: Chart.js (グラフ), Marked.js (Markdownパース), FontAwesome (アイコン)
-- **ブラウザAPI**: 
-  - `IndexedDB` (データ永続化)
-  - `Web Workers` (バックグラウンドでのAI通信処理)
-  - `Wake Lock API` (AI生成中の画面スリープ防止)
-  - `File System Access API` (チャット履歴のローカルファイル保存)
-  - `Service Worker` (PWA対応キャッシュ)
-
-## 🚀 使い方（セットアップ）
-
-本アプリはサーバー構築やインストールが一切不要です。
-
-1. **ファイルをダウンロード**
-   提供されているHTMLファイル（例: `index.html`）をダウンロードします。
-2. **ブラウザで開く**
-   PCまたはスマートフォンのブラウザ（Chrome, Safari, Edge推奨）でHTMLファイルを開きます。
-3. **APIキーの設定（必須）**
-   - 右上の「⚙️（歯車アイコン）」または下部の「設定タブ」を開きます。
-   - 使用したいAIモデルを選択し、ご自身で取得した**APIキー**を入力して「設定を保存」を押します。
-     - *Google Gemini APIキーは [Google AI Studio](https://aistudio.google.com/) から無料で取得できます。*
-4. **プロフィールの入力**
-   - 「プロフ」タブで名前、生年月日、出生地などを入力し「保存して分析へ」を押します。
-5. **占いを開始**
-   - 各タブ（分析、今日の星、詳細、予報）を開き、「生成・更新」ボタンを押してAIに星々を読み解かせてください！
-
-## 📱 画面構成
-
-| タブ | 機能説明 |
-| :--- | :--- |
-| 🧑‍🚀 **プロフ** | 基本情報（ネイタルチャート生成用データ）の入力・保存。 |
-| ⭐ **分析** | 入力情報に基づいた総合的な自己分析レポートの生成と表示。 |
-| ☀️ **今日の星** | 今日または今週の運勢とアドバイスをクイックに生成。 |
-| 🔍 **詳細** | 日時をカレンダーで指定し、その瞬間の影響をピンポイントで分析。過去の分析履歴も確認可能。 |
-| 📈 **予報** | 月次(1.5年) / 週次(3ヶ月) / 日次(2週間) / 時間(3日間) の粒度で影響度をグラフ化し、詳細なテーマとアドバイスをタイムライン表示。 |
-| 💬 **チャット** | 星占い師AIとのチャット。あなたのプロフや直近の分析結果を踏まえた的確なアドバイスをもらえます。 |
-| ⚙️ **設定** | AIモデル変更、APIキー管理、システムプロンプトの調整、データのバックアップ/復元/消去。 |
-
-## ⚠️ 免責事項
-
-- 本アプリケーションはエンターテイメント目的で作成されています。AIによって生成される占星術の分析結果やアドバイスは、科学的根拠に基づくものではなく、いかなる決断の最終的な指針とするべきではありません。
-- アプリ内で入力したAPIキーは、ブラウザのローカルストレージにのみ保存され、開発者や第三者に送信されることはありません。APIキーの管理は自己責任で行ってください。
-
-## 📜 ライセンス
-
-MIT License
+「Live Server」拡張機能で `index.html` を右クリック→「Open with Live Server」。
 
 ---
-*Created with ❤️ powered by AI & Astrology.*
+
+## 3. 使い方
+
+1. **プロフィール**タブで名前・生年月日・出生地を入力
+2. **設定**タブでAIモデルを選択し、APIキーを入力して保存
+3. **分析**タブで「生成・更新」を押して自己分析を生成
+4. **今日の星**タブで今日/今週の運勢を生成
+5. **詳細**タブで指定日時のトランジット分析
+6. **予報**タブで未来予測（4粒度切替）
+7. **チャット**タブでAIに自由質問
+
+---
+
+## 4. APIキーの取得先
+
+| プロバイダー | コンソール |
+|---|---|
+| Google (Gemini) | https://aistudio.google.com/apikey |
+| Anthropic (Claude) | https://console.anthropic.com/ |
+| OpenAI (GPT) | https://platform.openai.com/api-keys |
+| xAI (Grok) | https://console.x.ai/ |
+
+---
+
+## 5. 注意事項
+
+- **ブラウザから直接APIを叩く構成**のため、開発・個人利用以外では Cloudflare Workers などのプロキシ経由を推奨します（要件定義書 §5）。
+- Anthropic API は通常CORSをブロックするため、`anthropic-dangerously-allow-browser: true` ヘッダで開発用に許可しています。本番ではプロキシ必須。
+- データはすべて端末のIndexedDBに保存されます。ブラウザのデータを消すと消失するので、定期的に「バックアップをDL」を推奨。
