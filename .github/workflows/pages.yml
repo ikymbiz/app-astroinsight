@@ -1,26 +1,39 @@
 name: Deploy Pages
 
-# 用途: ZIP配布された静的サイト or フロントエンドプロジェクトを GitHub Pages に公開する
-# 動作: ZIPがあれば自動展開 → 静的サイトかビルドが必要かを判定 → 必要ならビルド → Pages公開
+# 用途:
+#   ZIP配布された静的サイト、またはフロントエンドプロジェクトを GitHub Pages に公開する。
 #
-# 対応ケース:
-#   A. index.html が直接置いてある静的サイト  → そのまま公開
-#   B. package.json があり "build" スクリプトがある → npm/yarn/pnpm でビルドして dist/build/out 等を公開
+# 対応:
+#   A. ZIP / tar.gz / tgz がある場合
+#      → _site_src に展開
+#      → 展開物の中から index.html または package.json を検出
+#
+#   B. index.html が直接ある静的サイト
+#      → そのまま公開
+#
+#   C. package.json があり scripts.build があるフロントエンド
+#      → npm / yarn / pnpm でビルド
+#      → dist / build / out / public / _site / .next/standalone を公開
+#
+# 重要:
+#   GitHub の Settings → Pages → Source は必ず "GitHub Actions" にすること。
+#   カスタムドメインが不安定な間は Custom domain を空にして、
+#   https://ikymbiz.github.io/app-astroinsight/ で先に確認すること。
 
 on:
   push:
-    branches: ["main", "master"]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
-# GitHub Pages デプロイに必要な権限
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# 同時実行は最新のもの優先 (Pages はキャンセルしない)
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: false
 
 jobs:
@@ -30,54 +43,104 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # ---- 層 0: 現状把握 ----
+      # ---- 層 0: チェックアウト ----
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show context
+      - name: Show initial repository contents
         run: |
+          echo "=== Repository root ==="
+          pwd
+          echo ""
           echo "=== Repository contents ==="
           ls -la
+          echo ""
+          echo "=== Files, maxdepth 3 ==="
+          find . -maxdepth 3 \
+            -not -path "./.git/*" \
+            -not -path "*/node_modules/*" \
+            | sort
 
-      # ---- 層 1: アーカイブ自動展開 (ZIP / tar.gz) ----
+      # ---- 層 1: ZIP / tar.gz / tgz を _site_src に展開 ----
       - name: Auto-extract archives
+        id: extract
         run: |
+          set -e
           shopt -s nullglob
+
+          rm -rf _site_src
+          mkdir -p _site_src
+
           extracted=false
+
           for z in *.zip; do
             echo "📦 Extracting ZIP: $z"
-            unzip -oq "$z"
+            unzip -oq "$z" -d _site_src
             extracted=true
           done
+
           for t in *.tar.gz *.tgz; do
             echo "📦 Extracting tarball: $t"
-            tar xzf "$t"
+            tar xzf "$t" -C _site_src
             extracted=true
           done
-          # 余計なファイルを除去
-          rm -rf __MACOSX
-          find . -name ".DS_Store" -delete 2>/dev/null || true
+
+          rm -rf _site_src/__MACOSX
+          find _site_src -name ".DS_Store" -delete 2>/dev/null || true
+
           if [ "$extracted" = true ]; then
+            echo "extracted=true" >> "$GITHUB_OUTPUT"
             echo ""
-            echo "=== After extraction ==="
-            ls -la
+            echo "=== Extracted contents ==="
+            find _site_src -maxdepth 4 \
+              -not -path "*/node_modules/*" \
+              | sort
+          else
+            echo "extracted=false" >> "$GITHUB_OUTPUT"
+            echo "No archives found. Will inspect repository contents directly."
           fi
 
-      # ---- 層 2: サイト種別とプロジェクトルートを検出 ----
+      # ---- 層 2: サイト種別とルートを検出 ----
       - name: Detect site type
         id: detect
         run: |
-          # ノイズ除外しつつ marker を探す
-          PKG=$(find . -maxdepth 4 -type f -name "package.json" \
-            -not -path "./.git/*" -not -path "*/node_modules/*" 2>/dev/null | head -n1)
-          INDEX=$(find . -maxdepth 4 -type f -name "index.html" \
-            -not -path "./.git/*" -not -path "*/node_modules/*" \
-            -not -path "*/dist/*" -not -path "*/build/*" 2>/dev/null | head -n1)
+          set -e
 
-          # package.json があり、かつ build スクリプトが定義されているか
+          EXTRACTED="${{ steps.extract.outputs.extracted }}"
+
+          if [ "$EXTRACTED" = "true" ]; then
+            SEARCH_BASE="_site_src"
+          else
+            SEARCH_BASE="."
+          fi
+
+          echo "Search base: $SEARCH_BASE"
+
+          PKG=$(find "$SEARCH_BASE" -maxdepth 5 -type f -name "package.json" \
+            -not -path "*/.git/*" \
+            -not -path "*/node_modules/*" \
+            2>/dev/null | sort | head -n1)
+
+          INDEX=$(find "$SEARCH_BASE" -maxdepth 5 -type f -name "index.html" \
+            -not -path "*/.git/*" \
+            -not -path "*/node_modules/*" \
+            -not -path "*/dist/*" \
+            -not -path "*/build/*" \
+            -not -path "*/out/*" \
+            2>/dev/null | sort | head -n1)
+
+          echo "Detected package.json: ${PKG:-none}"
+          echo "Detected index.html: ${INDEX:-none}"
+
           HAS_BUILD_SCRIPT=false
+
           if [ -n "$PKG" ]; then
-            if node -e "p=require('$PKG'); process.exit(p.scripts && p.scripts.build ? 0 : 1)" 2>/dev/null; then
+            if node -e "
+              const fs = require('fs');
+              const file = process.argv[1];
+              const p = JSON.parse(fs.readFileSync(file, 'utf8'));
+              process.exit(p.scripts && p.scripts.build ? 0 : 1);
+            " "$PKG"; then
               HAS_BUILD_SCRIPT=true
             fi
           fi
@@ -86,105 +149,246 @@ jobs:
             ROOT=$(dirname "$PKG")
             ROOT="${ROOT#./}"
             [ -z "$ROOT" ] && ROOT="."
-            echo "✅ Node.js project at '$ROOT' — will run 'npm run build'"
+
+            echo "✅ Node.js project detected at: $ROOT"
             echo "needs_build=true" >> "$GITHUB_OUTPUT"
             echo "root=$ROOT" >> "$GITHUB_OUTPUT"
           elif [ -n "$INDEX" ]; then
             ROOT=$(dirname "$INDEX")
             ROOT="${ROOT#./}"
             [ -z "$ROOT" ] && ROOT="."
-            echo "✅ Static site at '$ROOT' (will publish as-is)"
+
+            echo "✅ Static site detected at: $ROOT"
             echo "needs_build=false" >> "$GITHUB_OUTPUT"
             echo "root=$ROOT" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::Neither index.html nor package.json (with build script) was found."
-            echo "  - 静的サイトなら index.html をリポジトリに置いてください"
-            echo "  - フロントエンドプロジェクトなら package.json に \"scripts.build\" を定義してください"
+            echo "::error::Neither index.html nor package.json with scripts.build was found."
+            echo ""
+            echo "Expected one of:"
+            echo "  - index.html for a static site"
+            echo "  - package.json with scripts.build for a frontend project"
+            echo ""
+            echo "Debug listing:"
+            find "$SEARCH_BASE" -maxdepth 5 \
+              -not -path "*/.git/*" \
+              -not -path "*/node_modules/*" \
+              | sort
             exit 1
           fi
 
-      # ---- 層 3a: Node.js プロジェクトのビルド (必要な場合のみ) ----
+      # ---- 層 3: Node.js プロジェクトの場合だけセットアップ ----
       - name: Set up Node.js
         if: steps.detect.outputs.needs_build == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install & build
+      - name: Install dependencies and build
         if: steps.detect.outputs.needs_build == 'true'
         working-directory: ${{ steps.detect.outputs.root }}
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          elif [ -f yarn.lock ]; then
-            corepack enable
-            yarn install --frozen-lockfile
-          elif [ -f pnpm-lock.yaml ]; then
+          set -e
+
+          echo "Working directory:"
+          pwd
+
+          if [ -f pnpm-lock.yaml ]; then
+            echo "Using pnpm"
             corepack enable
             pnpm install --frozen-lockfile
+            pnpm run build
+          elif [ -f yarn.lock ]; then
+            echo "Using yarn"
+            corepack enable
+            yarn install --frozen-lockfile
+            yarn build
+          elif [ -f package-lock.json ]; then
+            echo "Using npm ci"
+            npm ci
+            npm run build
           else
+            echo "Using npm install"
             npm install
+            npm run build
           fi
-          npm run build
 
       # ---- 層 4: 公開ディレクトリを確定 ----
-      # 静的サイト  → detect.outputs.root をそのまま公開
-      # ビルド済み  → root 配下の dist/build/out/public/_site のいずれかを公開
       - name: Resolve publish directory
         id: publish
         run: |
+          set -e
+
           ROOT="${{ steps.detect.outputs.root }}"
           NEEDS_BUILD="${{ steps.detect.outputs.needs_build }}"
 
+          echo "Detected root: $ROOT"
+          echo "Needs build: $NEEDS_BUILD"
+
           if [ "$NEEDS_BUILD" = "true" ]; then
-            for d in dist build out public _site .next/standalone; do
+            CANDIDATES=(
+              "dist"
+              "build"
+              "out"
+              "public"
+              "_site"
+              ".next/standalone"
+            )
+
+            for d in "${CANDIDATES[@]}"; do
               if [ "$ROOT" = "." ]; then
                 CHECK="$d"
               else
                 CHECK="$ROOT/$d"
               fi
+
               if [ -d "$CHECK" ]; then
                 echo "✅ Publish directory: $CHECK"
                 echo "dir=$CHECK" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
             done
+
             echo "::error::No build output directory found."
-            echo "  Looked for: dist, build, out, public, _site"
+            echo "Looked for:"
+            printf '  - %s\n' "${CANDIDATES[@]}"
+            echo ""
+            echo "Build tree:"
+            find "$ROOT" -maxdepth 3 \
+              -not -path "*/node_modules/*" \
+              | sort
             exit 1
           else
             echo "✅ Publish directory: $ROOT"
             echo "dir=$ROOT" >> "$GITHUB_OUTPUT"
           fi
 
-      # ---- 層 5: Pages 用に成果物をアップロード ----
+      # ---- 層 5: Pages に送る前の中身確認 ----
+      - name: Verify publish directory
+        run: |
+          set -e
+
+          DIR="${{ steps.publish.outputs.dir }}"
+
+          echo "Publish dir: $DIR"
+          echo ""
+          echo "=== Publish directory contents ==="
+          find "$DIR" -maxdepth 3 \
+            -not -path "*/node_modules/*" \
+            | sort
+
+          echo ""
+          echo "=== Required checks ==="
+
+          if [ ! -f "$DIR/index.html" ]; then
+            echo "::error::index.html not found at publish directory root: $DIR/index.html"
+            echo ""
+            echo "This will cause GitHub Pages 404."
+            exit 1
+          fi
+
+          echo "✅ index.html found"
+
+          if [ -f "$DIR/404.html" ]; then
+            echo "✅ 404.html found"
+          else
+            echo "⚠️ 404.html not found"
+          fi
+
+          if [ -f "$DIR/.nojekyll" ]; then
+            echo "✅ .nojekyll found"
+          else
+            echo "⚠️ .nojekyll not found. It will be added in the artifact."
+          fi
+
+          if [ -f "$DIR/CNAME" ]; then
+            echo "✅ CNAME found:"
+            cat "$DIR/CNAME"
+          else
+            echo "ℹ️ CNAME not found. No custom domain file will be published."
+          fi
+
+      # ---- 層 6: アップロード用 artifact ディレクトリを作る ----
+      - name: Prepare Pages artifact directory
+        id: artifact
+        run: |
+          set -e
+
+          SRC="${{ steps.publish.outputs.dir }}"
+          DEST="_pages_artifact"
+
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+
+          echo "Copying from $SRC to $DEST"
+          rsync -a --delete "$SRC"/ "$DEST"/
+
+          # GitHub Pages で _ から始まるファイルやディレクトリが消されないようにする
+          touch "$DEST/.nojekyll"
+
+          echo ""
+          echo "=== Final artifact contents ==="
+          find "$DEST" -maxdepth 3 \
+            -not -path "*/node_modules/*" \
+            | sort
+
+          echo ""
+          echo "=== Final checks ==="
+
+          test -f "$DEST/index.html" || {
+            echo "::error::index.html is missing from final artifact"
+            exit 1
+          }
+
+          echo "✅ Final artifact has index.html"
+
+          echo "dir=$DEST" >> "$GITHUB_OUTPUT"
+
+      # ---- 層 7: GitHub Pages artifact をアップロード ----
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ${{ steps.publish.outputs.dir }}
+          path: ${{ steps.artifact.outputs.dir }}
 
-      # ---- 失敗時のデバッグ情報 ----
+      # ---- 失敗時の詳細ログ ----
       - name: Debug dump on failure
         if: failure()
         run: |
-          echo "=== File system ==="
-          find . -maxdepth 3 -not -path "./.git/*" -not -path "*/node_modules/*" | sort
+          echo "=== Current directory ==="
+          pwd
+
           echo ""
-          echo "=== Detected ==="
+          echo "=== File system, maxdepth 5 ==="
+          find . -maxdepth 5 \
+            -not -path "./.git/*" \
+            -not -path "*/node_modules/*" \
+            | sort
+
+          echo ""
+          echo "=== Outputs ==="
+          echo "extracted=${{ steps.extract.outputs.extracted }}"
           echo "needs_build=${{ steps.detect.outputs.needs_build }}"
           echo "root=${{ steps.detect.outputs.root }}"
+          echo "publish_dir=${{ steps.publish.outputs.dir }}"
+          echo "artifact_dir=${{ steps.artifact.outputs.dir }}"
 
   deploy:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Show deployed URL
+        run: |
+          echo "✅ Deployed URL:"
+          echo "${{ steps.deployment.outputs.page_url }}"
